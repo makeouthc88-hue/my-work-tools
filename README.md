@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>全能門店管理 (雲端同步版)</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        /* --- 全局基礎設定 (維持原樣) --- */
+        :root { --primary-dark: #2c3e50; --accent-green: #27ae60; --accent-blue: #3498db; --bg-light: #f4f6f9; --border-color: #e0e0e0; --manual-color: #e67e22; --safe-top: env(safe-area-inset-top); }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif; background-color: var(--bg-light); margin: 0; padding: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; padding-top: var(--safe-top); }
+        .nav-bar { height: 44px; background: #1a252f; display: flex; align-items: center; padding: 0 10px; gap: 5px; flex-shrink: 0; z-index: 200; justify-content: space-between; }
+        .app-title { color: white; font-weight: bold; font-size: 14px; white-space: nowrap; display: flex; align-items: center; gap: 5px;}
+        .sync-dot { width: 8px; height: 8px; background-color: #f1c40f; border-radius: 50%; display: inline-block; } /* 同步燈號 */
+        .nav-buttons { display: flex; gap: 5px; }
+        .tab-btn { background: rgba(255,255,255,0.1); border: none; color: #bdc3c7; padding: 6px 10px; font-size: 13px; border-radius: 6px; font-weight: bold; transition: all 0.2s; }
+        .tab-btn.active { color: #fff; background: #3498db; }
+        .view-container { flex: 1; position: relative; display: none; flex-direction: column; overflow: hidden; height: 100%; }
+        .view-container.active { display: flex; }
+        .schedule-top-bar { height: auto; min-height: 50px; background: var(--primary-dark); display: flex; flex-wrap: wrap; align-items: center; padding: 5px 10px; gap: 10px; border-bottom: 1px solid #34495e; flex-shrink: 0; color: white; }
+        .info-group { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.3); padding: 5px 10px; border-radius: 8px; flex: 1; }
+        .date-input { background: transparent; border: none; color: #f1c40f; font-size: 18px; font-weight: bold; width: 70px; text-align: center; }
+        .real-time-clock { font-size: 20px; font-weight: bold; color: #2ecc71; margin-left: auto; }
+        .control-group { display: flex; gap: 10px; width: 100%; justify-content: space-between; align-items: center; }
+        .action-btn { background: var(--accent-green); color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; }
+        .action-btn-reset { background: #c0392b; }
+        .time-settings { display: flex; gap: 5px; font-size: 12px; color: #ecf0f1; align-items: center; }
+        .time-settings input { width: 30px; text-align: center; border-radius: 4px; border: none; padding: 2px; }
+        .main-wrapper { display: flex; flex: 1; overflow: hidden; position: relative; }
+        .left-panel { width: 100px; min-width: 60px; max-width: 50vw; background: #eef2f3; border-right: 1px solid #ccc; display: flex; flex-direction: column; z-index: 50; flex-shrink: 0; }
+        .left-header-bar { height: 30px; background: #dfe4ea; border-bottom: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; color: #7f8c8d; }
+        .left-content { flex: 1; overflow-y: auto; padding-bottom: 20px; }
+        .staff-card { min-height: 70px; height: auto; border-bottom: 1px solid #ccc; background: #fff; padding: 4px; padding-bottom: 10px; display: flex; flex-direction: column; position: relative; flex-shrink: 0; overflow: hidden; }
+        .staff-header { display: flex; align-items: center; margin-bottom: 2px; flex-shrink: 0; }
+        .idx-badge { background: #34495e; color: white; font-size: 10px; width: 16px; height: 16px; border-radius: 50%; display: flex; justify-content: center; align-items: center; margin-right: 3px; flex-shrink: 0; }
+        .staff-name { flex: 1; border: none; border-bottom: 1px solid #f39c12; font-size: 14px; font-weight: bold; width: 100%; background: transparent; border-radius: 0; min-width: 0; }
+        .btn-delete { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; background: #ecf0f1; color: #7f8c8d; border-radius: 50%; border: none; font-size: 14px; padding: 0; }
+        .schedule-text-display { width: 100%; min-height: 0; flex: 1; border: 1px solid #ddd; font-size: 11px; padding: 4px; background: #fafafa; border-radius: 4px; white-space: pre-wrap; cursor: pointer; color: #2c3e50; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; }
+        .col-resizer { width: 12px; background: #bdc3c7; cursor: col-resize; display: flex; align-items: center; justify-content: center; z-index: 60; flex-shrink: 0; border-left: 1px solid #95a5a6; border-right: 1px solid #95a5a6; }
+        .col-resizer::after { content: "||"; color: #ecf0f1; font-size: 8px; font-weight: bold; }
+        .row-resizer { position: absolute; bottom: 0; left: 0; width: 100%; height: 10px; cursor: row-resize; z-index: 10; display: flex; justify-content: center; align-items: flex-end; }
+        .row-resizer::after { content: ""; display: block; width: 20px; height: 3px; border-top: 1px solid #bdc3c7; border-bottom: 1px solid #bdc3c7; margin-bottom: 2px; }
+        .right-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #fcfcfc; }
+        .ruler-container { height: 30px; background: #ecf0f1; border-bottom: 1px solid #bdc3c7; overflow: hidden; flex-shrink: 0; position: relative; }
+        .tracks-scroll-area { flex: 1; overflow: auto; padding-top: 0; position: relative; }
+        .tracks-wrapper { position: relative; min-width: 100%; min-height: 100%; }
+        .grid-lines { position: absolute; top: 0; left: 0; height: 100%; width: 100%; pointer-events: none; }
+        .v-line { position: absolute; top: 0; height: 100%; border-left: 1px dashed #e0e0e0; }
+        .track-row { min-height: 70px; height: auto; border-bottom: 1px solid #e0e0e0; position: relative; box-sizing: border-box; }
+        .hour-mark { position: absolute; top: 0; height: 100%; border-left: 1px solid #bdc3c7; padding-left: 2px; font-size: 10px; color: #555; line-height: 30px; }
+        .block { position: absolute; top: 4px; bottom: 4px; border-radius: 4px; display: block; padding: 2px 4px; font-size: 11px; box-shadow: 0 1px 3px rgba(0,0,0,0.2); white-space: normal; overflow: hidden; word-wrap: break-word; line-height: 1.2; }
+        .type-work { background: #3498db; color: white; border: 1px solid #2980b9; z-index: 2; font-weight: bold; }
+        .type-free { background: #d4efdf; color: #1e8449; border: 1px dashed #2ecc71; height: 24px; top: 50%; transform: translateY(-50%); opacity: 0.95; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; line-height: 1.1; }
+        .type-conflict { background: #e74c3c; color: white; z-index: 3; }
+        .current-time-line { position: absolute; top: 0; bottom: 0; width: 2px; background: #e74c3c; z-index: 40; pointer-events: none; display: none; }
+        /* Modal */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; display: none; justify-content: center; align-items: center; }
+        .modal-overlay.active { display: flex; }
+        .modal-content { background: white; width: 90%; max-width: 400px; padding: 15px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); display: flex; flex-direction: column; gap: 10px; }
+        .modal-title { font-weight: bold; font-size: 16px; color: #2c3e50; text-align: center; }
+        .modal-textarea { width: 100%; height: 200px; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; resize: none; font-family: monospace; }
+        .modal-btns { display: flex; gap: 10px; justify-content: space-between; margin-top: 5px; }
+        .modal-btn { flex: 1; padding: 10px; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .btn-cancel { background: #95a5a6; color: white; }
+        .btn-save { background: #2ecc71; color: white; }
+        /* 日結 */
+        .settle-container { width: 100%; padding: 10px; overflow-y: auto; height: 100%; padding-bottom: 80px; }
+        .config-section { display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; }
+        .config-panel { background: white; padding: 10px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .config-panel h3 { margin: 0 0 8px 0; color: #007bff; font-size: 15px; border-bottom: 1px solid #f0f0f0; padding-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
+        .settings-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        .setting-item { background: #f8f9fa; padding: 4px 8px; border-radius: 6px; border: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .setting-item label { font-size: 11px; color: #666; font-weight: bold; margin-right: 5px; }
+        .setting-item input { width: 50px; padding: 4px; border: 1px solid #ccc; border-radius: 4px; text-align: right; font-size: 13px; }
+        .service-list { display: flex; flex-wrap: wrap; gap: 8px; }
+        .service-row { display: flex; align-items: center; gap: 3px; background: #fff3cd; padding: 4px 8px; border-radius: 15px; border: 1px solid #ffeeba; }
+        .service-row input[type="text"] { width: 50px; border: none; background: transparent; font-weight: bold; color: #856404; text-align: center; font-size: 13px; }
+        .service-row input[type="number"] { width: 45px; border: 1px solid #ddd; border-radius: 4px; padding: 2px; text-align: right; font-size: 13px; }
+        .middle-section { margin-bottom: 15px; overflow-x: auto; padding-bottom: 5px; }
+        .summary-area { display: flex; gap: 10px; min-width: 100%; }
+        .card { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); padding: 10px; min-width: 80px; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .card h4 { margin: 0 0 5px 0; font-size: 11px; color: #888; white-space: nowrap; }
+        .card p { margin: 0; font-size: 18px; font-weight: 800; color: #333; }
+        .text-green { color: #28a745 !important; }
+        .text-red { color: #dc3545 !important; }
+        .text-blue { color: #007bff !important; }
+        .table-container { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); overflow: hidden; margin-bottom: 20px; }
+        .table-scroll { overflow-x: auto; max-height: 50vh; }
+        table { width: 100%; border-collapse: collapse; min-width: 600px; }
+        thead th { position: sticky; top: 0; background-color: #343a40; color: white; padding: 8px; text-align: center; font-size: 12px; z-index: 10; white-space: nowrap; }
+        tbody td { padding: 6px 4px; border-bottom: 1px solid #eee; font-size: 13px; text-align: center; vertical-align: middle; }
+        .group-header { background-color: #e9ecef; }
+        .group-header td { padding: 8px; font-size: 14px; text-align: left; font-weight: bold; }
+        td[contenteditable] { min-width: 40px; padding: 8px 2px; }
+        td[contenteditable]:focus { background: #fff; outline: 2px solid var(--accent-blue); }
+        .manual-edit { color: var(--manual-color) !important; font-weight: bold; }
+        .btn-circle { border-radius: 50%; width: 24px; height: 24px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border: none; color: white; font-weight: bold; font-size: 16px; }
+        .btn-green { background: #28a745; }
+        .btn-red { background: #dc3545; }
+    </style>
+</head>
+<body>
+
+<nav class="nav-bar">
+    <div class="app-title">🏢 門店管理 <span class="sync-dot" id="syncStatus"></span></div>
+    <div class="nav-buttons">
+        <button class="tab-btn active" onclick="switchTab('schedule')">排班</button>
+        <button class="tab-btn" onclick="switchTab('settle')">日結</button>
+    </div>
+</nav>
+
+<div id="view-schedule" class="view-container active">
+    <div class="schedule-top-bar">
+        <div class="info-group">
+            <span style="font-size:12px; color:#aaa;">DATE</span>
+            <input type="text" class="date-input" id="dateInput" value="11/22" onchange="saveScheduleData()" enterkeyhint="done">
+            <div class="real-time-clock" id="topClock">00:00</div>
+        </div>
+        <div class="control-group">
+            <div style="display:flex; gap:10px;">
+                <button class="action-btn" onclick="addStaff()">+人員</button>
+                <button class="action-btn action-btn-reset" onclick="resetSchedule()">清空</button>
+            </div>
+            <div class="time-settings">
+                <span>開</span><input type="number" id="openHour" value="12" onchange="renderScheduleAll()">
+                <span>閉</span><input type="number" id="closeHour" value="29" onchange="renderScheduleAll()">
+            </div>
+        </div>
+    </div>
+
+    <div class="main-wrapper">
+        <div class="left-panel" id="leftPanel">
+            <div class="left-header-bar">人員</div>
+            <div class="left-content" id="leftContent"></div>
+        </div>
+
+        <div class="col-resizer" id="colResizer"></div>
+
+        <div class="right-panel">
+            <div class="ruler-container" id="rulerContainer">
+                <div id="ruler" style="height:100%; position:relative;"></div>
+            </div>
+            <div class="tracks-scroll-area" id="rightContent">
+                <div class="tracks-wrapper" id="trackContainer">
+                    <div class="grid-lines" id="gridBg"></div>
+                    <div id="currentTimeLine" class="current-time-line"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="view-settle" class="view-container">
+    <div class="settle-container">
+        <div class="middle-section">
+            <div class="summary-area">
+                <div class="card"><h4>總營收</h4><p id="total_revenue" class="text-green">0</p></div>
+                <div class="card"><h4>阿姨</h4><p id="total_aunt">0</p></div>
+                <div class="card"><h4>小姐</h4><p id="total_commission" class="text-red">0</p></div>
+                <div class="card"><h4>公司</h4><p id="total_balance" class="text-blue">0</p></div>
+                <div class="card"><h4>工數</h4><p id="total_work">0</p></div>
+            </div>
+        </div>
+        <div class="config-section">
+            <div class="config-panel">
+                <h3>💰 底薪參數 (點擊修改)</h3>
+                <div class="settings-grid">
+                    <div class="setting-item"><label>40分/1</label><input type="number" id="base_40_1" value="1100" oninput="renderSettlementTable()"></div>
+                    <div class="setting-item"><label>60分/1</label><input type="number" id="base_60_1" value="1400" oninput="renderSettlementTable()"></div>
+                    <div class="setting-item"><label>60分/2</label><input type="number" id="base_60_2" value="1900" oninput="renderSettlementTable()"></div>
+                    <div class="setting-item"><label>120分/3</label><input type="number" id="base_120_3" value="2800" oninput="renderSettlementTable()"></div>
+                    <input type="hidden" id="cost_40_1" value="2300">
+                    <input type="hidden" id="cost_60_1" value="2700">
+                    <input type="hidden" id="cost_60_2" value="3300">
+                    <input type="hidden" id="cost_120_3" value="4800">
+                </div>
+            </div>
+            <div class="config-panel">
+                <h3>✨ 加值服務 <button class="btn-circle btn-green" onclick="addServiceRow()" style="width:24px; height:24px;">+</button></h3>
+                <div id="service_container" class="service-list"></div>
+            </div>
+        </div>
+        <div class="table-container">
+            <div class="table-scroll">
+                <table id="settleTable">
+                    <thead>
+                        <tr>
+                            <th width="20%">內容</th>
+                            <th width="10%">加值</th>
+                            <th width="10%">底薪</th>
+                            <th width="12%">阿姨</th>
+                            <th width="12%">總收</th>
+                            <th width="12%">實拿</th>
+                            <th width="12%">結餘</th>
+                            <th width="8%">工</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table_body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="editModal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-title">編輯班表</div>
+        <textarea id="modalTextarea" class="modal-textarea" placeholder="請在此貼上完整班表..."></textarea>
+        <div class="modal-btns">
+            <button class="modal-btn btn-cancel" onclick="closeEditModal()">取消</button>
+            <button class="modal-btn btn-save" onclick="saveModalData()">確定儲存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // === 2. Firebase 設定 ===
+    const firebaseConfig = {
+        apiKey: "AIzaSyDsUsWuynci0DP71veuu19Ht8bJmhHSkHs",
+        authDomain: "worktools-f53e5.firebaseapp.com",
+        databaseURL: "https://worktools-f53e5-default-rtdb.firebaseio.com",
+        projectId: "worktools-f53e5",
+        storageBucket: "worktools-f53e5.firebasestorage.app",
+        messagingSenderId: "950551082090",
+        appId: "1:950551082090:web:3c2c4962b5ffa044aec613",
+        measurementId: "G-EKPY3SC0BR"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.view-container').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById('view-' + tabId).classList.add('active');
+        const btns = document.querySelectorAll('.tab-btn');
+        if(tabId === 'schedule') btns[0].classList.add('active');
+        else btns[1].classList.add('active');
+        if(tabId === 'schedule') setTimeout(() => { renderScheduleAll(); }, 50);
+        if(tabId === 'settle') renderSettlementTable();
+    }
+
+    const PX_PER_MIN = 2;
+    let staffData = [{ id: 1, name: "哀哀", content: "", height: null }, { id: 2, name: "安安", content: "", height: null }];
+    
+    // 加值服務預設資料 (若雲端有則會被覆蓋)
+    let services = [ {name: "nocon", price: 1000}, {name: "口爆", price: 500}, {name: "顏射", price: 500}, {name: "入珠", price: 500} ];
+
+    let currentEditingStaffId = null; 
+
+    const leftContent = document.getElementById('leftContent');
+    const rightContent = document.getElementById('rightContent');
+    const rulerContainer = document.getElementById('rulerContainer');
+    const syncStatus = document.getElementById('syncStatus');
+
+    // 滾動同步
+    let isSyncingLeft = false; let isSyncingRight = false;
+    rightContent.addEventListener('scroll', function() {
+        if (!isSyncingLeft) { isSyncingRight = true; leftContent.scrollTop = this.scrollTop; rulerContainer.scrollLeft = this.scrollLeft; }
+        isSyncingLeft = false;
+    });
+    leftContent.addEventListener('scroll', function() {
+        if (!isSyncingRight) { isSyncingLeft = true; rightContent.scrollTop = this.scrollTop; }
+        isSyncingRight = false;
+    });
+
+    // --- 左右寬度拖拉 ---
+    const colResizer = document.getElementById('colResizer');
+    const leftPanel = document.getElementById('leftPanel');
+    let isColDragging = false; let colStartX, colStartWidth;
+    
+    colResizer.addEventListener('touchstart', (e) => { isColDragging = true; colStartX = e.touches[0].clientX; colStartWidth = parseInt(window.getComputedStyle(leftPanel).width, 10); });
+    colResizer.addEventListener('mousedown', (e) => { isColDragging = true; colStartX = e.clientX; colStartWidth = parseInt(window.getComputedStyle(leftPanel).width, 10); document.body.style.cursor = 'col-resize'; });
+    
+    // --- 上下高度拖拉 ---
+    let isRowDragging = false; 
+    let rowStartY, rowStartHeight, draggingStaffId;
+
+    leftContent.addEventListener('touchstart', (e) => {
+        if (e.target.classList.contains('row-resizer')) {
+            isRowDragging = true;
+            rowStartY = e.touches[0].clientY;
+            draggingStaffId = parseInt(e.target.parentElement.dataset.staffId);
+            rowStartHeight = parseInt(window.getComputedStyle(e.target.parentElement).height, 10);
+            e.preventDefault(); 
+        }
+    });
+    leftContent.addEventListener('mousedown', (e) => {
+        if (e.target.classList.contains('row-resizer')) {
+            isRowDragging = true;
+            rowStartY = e.clientY;
+            draggingStaffId = parseInt(e.target.parentElement.dataset.staffId);
+            rowStartHeight = parseInt(window.getComputedStyle(e.target.parentElement).height, 10);
+            document.body.style.cursor = 'row-resize';
+            e.preventDefault();
+        }
+    });
+
+    document.addEventListener('touchmove', (e) => {
+        if (isColDragging) {
+            let newWidth = colStartWidth + (e.touches[0].clientX - colStartX);
+            if (newWidth < 60) newWidth = 60; if (newWidth > window.innerWidth * 0.8) newWidth = window.innerWidth * 0.8;
+            leftPanel.style.width = newWidth + 'px';
+        }
+        if (isRowDragging && draggingStaffId) {
+            let deltaY = e.touches[0].clientY - rowStartY;
+            let newHeight = rowStartHeight + deltaY;
+            if (newHeight < 40) newHeight = 40; 
+            updateRowHeight(draggingStaffId, newHeight);
+        }
+    }, {passive: false});
+
+    document.addEventListener('mousemove', (e) => {
+        if (isColDragging) {
+            e.preventDefault();
+            let newWidth = colStartWidth + (e.clientX - colStartX);
+            if (newWidth < 60) newWidth = 60;
+            leftPanel.style.width = newWidth + 'px';
+        }
+        if (isRowDragging && draggingStaffId) {
+            e.preventDefault();
+            let deltaY = e.clientY - rowStartY;
+            let newHeight = rowStartHeight + deltaY;
+            if (newHeight < 40) newHeight = 40;
+            updateRowHeight(draggingStaffId, newHeight);
+        }
+    });
+
+    document.addEventListener('touchend', () => { 
+        if (isRowDragging && draggingStaffId) saveStaffHeight(draggingStaffId);
+        isColDragging = false; isRowDragging = false; draggingStaffId = null; 
+    });
+    document.addEventListener('mouseup', () => { 
+        if (isRowDragging && draggingStaffId) saveStaffHeight(draggingStaffId);
+        isColDragging = false; isRowDragging = false; draggingStaffId = null; document.body.style.cursor = 'default'; 
+    });
+
+    function updateRowHeight(id, height) {
+        const card = document.querySelector(`.staff-card[data-staff-id="${id}"]`);
+        const track = document.getElementById(`track-${id}`);
+        if (card) card.style.height = height + 'px';
+        if (track) track.style.height = height + 'px';
+    }
+
+    function saveStaffHeight(id) {
+        const card = document.querySelector(`.staff-card[data-staff-id="${id}"]`);
+        if (card) {
+            const h = parseInt(card.style.height);
+            const staff = staffData.find(s => s.id === id);
+            if (staff) { staff.height = h; saveScheduleData(); }
+        }
+    }
+
+    // === 3. 初始化 Firebase 監聽 (取代 initSchedule) ===
+    function initSchedule() {
+        syncStatus.style.background = "orange";
+        // 監聽 shop_v7_data 這個節點
+        db.ref('shop_v7_data').on('value', (snapshot) => {
+            const val = snapshot.val();
+            if (val) {
+                // 更新人員資料
+                staffData = val.staffData || [];
+                // 更新日期
+                if(val.date) document.getElementById('dateInput').value = val.date;
+                // 更新加值服務清單
+                if(val.services) {
+                    services = val.services;
+                    renderServices();
+                }
+                
+                renderScheduleAll();
+                renderSettlementTable();
+                syncStatus.style.background = "#2ecc71"; // 綠燈代表連線中
+            } else {
+                // 如果是第一次使用，上傳預設值
+                saveScheduleData();
+            }
+        });
+        setInterval(updateTimeLineAndClock, 1000);
+    }
+
+    // === 4. 上傳資料到雲端 (取代 saveScheduleData) ===
+    function saveScheduleData() {
+        syncStatus.style.background = "red"; // 上傳中亮紅燈
+        const dataToSave = {
+            staffData: staffData,
+            date: document.getElementById('dateInput').value,
+            services: services
+        };
+        db.ref('shop_v7_data').set(dataToSave).then(() => {
+            syncStatus.style.background = "#2ecc71"; // 完成變回綠燈
+        });
+    }
+
+    function resetSchedule() {
+        if(confirm("確定要清空所有人員和內容嗎？(雲端也會清空)")) { 
+            // 保留一個空的人員，避免陣列全空出錯
+            staffData = [{ id: Date.now(), name: "新人員", content: "", height: null }];
+            saveScheduleData(); 
+        }
+    }
+    function addStaff() {
+        const newId = Date.now(); staffData.push({ id: newId, name: "新", content: "", height: null });
+        saveScheduleData(); renderScheduleAll();
+    }
+    function removeStaff(id) {
+        if(confirm("刪除此人？")) { staffData = staffData.filter(s => s.id !== id); saveScheduleData(); renderScheduleAll(); }
+    }
+    function updateStaffName(id, newName) {
+        const staff = staffData.find(s => s.id === id); if (staff) staff.name = newName; saveScheduleData();
+    }
+    
+    // Modal
+    function openEditModal(staffId) {
+        const staff = staffData.find(s => s.id === staffId); if (!staff) return;
+        currentEditingStaffId = staffId;
+        document.getElementById('modalTextarea').value = staff.content;
+        document.getElementById('editModal').classList.add('active');
+        document.getElementById('modalTextarea').focus();
+    }
+    function closeEditModal() { document.getElementById('editModal').classList.remove('active'); currentEditingStaffId = null; }
+    function saveModalData() {
+        if (!currentEditingStaffId) return;
+        const newContent = document.getElementById('modalTextarea').value;
+        const staff = staffData.find(s => s.id === currentEditingStaffId);
+        if (staff) { staff.content = newContent; saveScheduleData(); renderScheduleAll(); }
+        closeEditModal();
+    }
+
+    function renderScheduleAll() { renderSidebar(); renderTracksOnly(); }
+
+    function renderSidebar() {
+        leftContent.innerHTML = '';
+        staffData.forEach((staff, index) => {
+            const div = document.createElement('div');
+            div.className = 'staff-card';
+            div.dataset.staffId = staff.id;
+            // 套用已儲存的高度
+            if (staff.height) div.style.height = staff.height + 'px';
+            
+            div.innerHTML = `
+                <div class="staff-header">
+                    <div class="idx-badge">${index + 1}</div>
+                    <input class="staff-name" value="${staff.name}" onchange="updateStaffName(${staff.id}, this.value)">
+                    <button class="btn-delete" onclick="removeStaff(${staff.id})">×</button>
+                </div>
+                <div class="schedule-text-display" onclick="openEditModal(${staff.id})">${staff.content || '<span style="color:#ccc">點擊編輯...</span>'}</div>
+                <div class="row-resizer"></div>
+            `;
+            leftContent.appendChild(div);
+        });
+    }
+
+    function renderTracksOnly() {
+        const openH = parseInt(document.getElementById('openHour').value) || 12;
+        const closeH = parseInt(document.getElementById('closeHour').value) || 29;
+        const startOfDay = openH * 60;
+        const totalWidth = (closeH * 60 - startOfDay) * PX_PER_MIN;
+
+        document.getElementById('ruler').style.width = totalWidth + 'px';
+        document.getElementById('trackContainer').style.width = totalWidth + 'px';
+        document.getElementById('gridBg').style.width = totalWidth + 'px';
+
+        const ruler = document.getElementById('ruler');
+        const gridBg = document.getElementById('gridBg');
+        ruler.innerHTML = ''; gridBg.innerHTML = '';
+        for (let h = openH; h <= closeH; h++) {
+            let left = (h * 60 - startOfDay) * PX_PER_MIN;
+            let displayH = h >= 24 ? h - 24 : h;
+            let mark = document.createElement('div'); mark.className = 'hour-mark'; mark.style.left = left + 'px'; mark.innerText = displayH; ruler.appendChild(mark);
+            let line = document.createElement('div'); line.className = 'v-line'; line.style.left = left + 'px'; gridBg.appendChild(line);
+        }
+
+        const container = document.getElementById('trackContainer');
+        container.querySelectorAll('.track-row').forEach(el => el.remove());
+
+        staffData.forEach(staff => {
+            const trackDiv = document.createElement('div');
+            trackDiv.className = 'track-row';
+            trackDiv.id = `track-${staff.id}`;
+            container.appendChild(trackDiv);
+            
+            if (staff.height) {
+                trackDiv.style.height = staff.height + 'px';
+            } else if (document.querySelector(`.staff-card[data-staff-id="${staff.id}"]`)) {
+                trackDiv.style.height = document.querySelector(`.staff-card[data-staff-id="${staff.id}"]`).offsetHeight + 'px';
+            }
+            
+            renderSingleTrack(trackDiv, staff.content, startOfDay, closeH * 60);
+        });
+        updateTimeLineAndClock();
+    }
+    
+    function renderSingleTrack(container, content, startOfDay, endOfDay) {
+        const lines = content.trim().split('\n');
+        const tasks = [];
+        lines.forEach(line => {
+            const trimmedLine = line.trim();
+            if (!trimmedLine) return;
+            if (/^[\d./-]+\s*(?:\([A-Za-z]+\))?$/.test(trimmedLine) && trimmedLine.length < 12) return; 
+
+            const match = trimmedLine.match(/([\d.:]+)\s*(\d+.*)/) || trimmedLine.match(/(\D+)\s*([\d.:]+)\s*(\d+.*)/);
+            if (match) {
+                let timeStr, detailStr;
+                if (match.length === 3) { timeStr = match[1]; detailStr = match[2]; } 
+                else { timeStr = match[2]; detailStr = match[3]; }
+                let duration = 60;
+                const numMatch = detailStr.match(/^(\d+)/);
+                if (numMatch) duration = parseInt(numMatch[1]);
+                const startTime = parseTime(timeStr);
+                if (startTime !== null) tasks.push({ start: startTime, end: startTime + duration, rawText: trimmedLine, conflict: false });
+            }
+        });
+        tasks.sort((a, b) => a.start - b.start);
+        for (let i = 0; i < tasks.length - 1; i++) {
+            if (tasks[i].end > tasks[i+1].start) { tasks[i].conflict = true; tasks[i+1].conflict = true; }
+        }
+        let currentCursor = startOfDay;
+        tasks.forEach(task => {
+            if (task.start > currentCursor) {
+                let gap = task.start - currentCursor;
+                if (gap >= 10) {
+                    let startStr = formatTime(currentCursor);
+                    let endStr = formatTime(task.start);
+                    let durationStr = formatDuration(gap);
+                    let label = `<b>${durationStr}</b><div style="font-size:10px; margin-top:1px;">${startStr}-${endStr}</div>`;
+                    createBlock(container, currentCursor, task.start, startOfDay, 'free', label);
+                }
+            }
+            let type = task.conflict ? 'conflict' : 'work';
+            createBlock(container, task.start, task.end, startOfDay, type, task.rawText);
+            if (task.end > currentCursor) currentCursor = task.end;
+        });
+    }
+
+    function parseTime(timeStr) {
+        if (!timeStr) return null;
+        timeStr = timeStr.replace('.', ':');
+        let parts = timeStr.split(':');
+        let h = 0, m = 0;
+        if (parts.length === 2) { h = parseInt(parts[0]); m = parseInt(parts[1]); }
+        else if (timeStr.length === 4) { h = parseInt(timeStr.substring(0, 2)); m = parseInt(timeStr.substring(2, 4)); }
+        else { h = parseInt(timeStr); }
+        if (isNaN(h)) return null;
+        if (h < 11) h += 24; 
+        return h * 60 + m;
+    }
+    function formatTime(minutes) {
+        if (minutes >= 24 * 60) minutes -= 24 * 60;
+        let h = Math.floor(minutes / 60); let m = minutes % 60;
+        return (h < 10 ? "0"+h : h) + ":" + (m < 10 ? "0"+m : m);
+    }
+    function formatDuration(mins) {
+        let h = Math.floor(mins / 60); let m = mins % 60;
+        return (h > 0 ? h + "h" : "") + (m > 0 ? m + "m" : "");
+    }
+    
+    function createBlock(container, start, end, offsetStart, type, content) {
+        if (end <= start) return;
+        const left = (start - offsetStart) * PX_PER_MIN;
+        const width = (end - start) * PX_PER_MIN;
+        const div = document.createElement('div');
+        div.className = `block type-${type}`;
+        div.style.left = left + 'px'; div.style.width = Math.max(width - 2, 2) + 'px';
+        if (type === 'free') { div.innerHTML = content; } else { div.innerText = content; }
+        container.appendChild(div);
+    }
+    
+    function updateTimeLineAndClock() {
+        const line = document.getElementById('currentTimeLine');
+        const topClock = document.getElementById('topClock');
+        const openH = parseInt(document.getElementById('openHour').value) || 12;
+        const now = new Date();
+        let h = now.getHours(); let m = now.getMinutes();
+        if(topClock) topClock.innerText = `${(h<10?"0"+h:h)}:${(m<10?"0"+m:m)}`;
+        if (h < 11) h += 24;
+        const offsetMins = (h * 60 + m) - openH * 60;
+        if (offsetMins >= 0 && line) { line.style.display = 'block'; line.style.left = (offsetMins * PX_PER_MIN) + 'px'; }
+        else if (line) { line.style.display = 'none'; }
+    }
+
+    // --- 日結 (已修正：加值服務同步) ---
+    const WORK_UNIT_TABLE = {40: 1, 60: 1, 120: 2};
+    const AUNT_EXTRA_NAMES = ["顏同", "阿鳴", "曼達", "有菜", "姚貴"];
+
+    function renderServices() {
+        const container = document.getElementById('service_container'); container.innerHTML = '';
+        services.forEach((svc, index) => {
+            const div = document.createElement('div'); div.className = 'service-row';
+            div.innerHTML = `<input type="text" value="${svc.name}" onchange="updateService(${index}, 'name', this.value)"><span>+</span><input type="number" value="${svc.price}" onchange="updateService(${index}, 'price', this.value)" step="100"><button class="btn-circle btn-red" style="width:18px; height:18px; font-size:12px;" onclick="removeService(${index})">×</button>`;
+            container.appendChild(div);
+        });
+    }
+    // 修改：更新服務後會觸發 saveScheduleData (上傳雲端)
+    function updateService(index, field, value) { 
+        if(field === 'price') value = parseInt(value) || 0; 
+        services[index][field] = value; 
+        renderSettlementTable(); 
+        saveScheduleData(); // 同步
+    }
+    function addServiceRow() { 
+        services.push({name: "新", price: 0}); 
+        renderServices(); 
+        renderSettlementTable(); 
+        saveScheduleData(); // 同步
+    }
+    function removeService(index) { 
+        services.splice(index, 1); 
+        renderServices(); 
+        renderSettlementTable(); 
+        saveScheduleData(); // 同步
+    }
+
+    function renderSettlementTable() {
+        const commTable = { "40-1": parseInt(document.getElementById('base_40_1').value) || 0, "60-1": parseInt(document.getElementById('base_60_1').value) || 0, "60-2": parseInt(document.getElementById('base_60_2').value) || 0, "120-3": parseInt(document.getElementById('base_120_3').value) || 0 };
+        const costTable = { "40-1": parseInt(document.getElementById('cost_40_1').value) || 0, "60-1": parseInt(document.getElementById('cost_60_1').value) || 0, "60-2": parseInt(document.getElementById('cost_60_2').value) || 0, "120-3": parseInt(document.getElementById('cost_120_3').value) || 0 };
+
+        let html = "";
+        staffData.forEach(staff => {
+            if (!staff.content.trim()) return;
+            html += `<tr class="group-header"><td colspan="8">${staff.name}</td></tr>`;
+            const lines = staff.content.split('\n');
+            lines.forEach(line => {
+                const rawLine = line.trim();
+                if (!rawLine) return;
+                const pattern = /(\d+)\/(\d+)-(\d+)/; const match = rawLine.match(pattern);
+                if (match) {
+                    const duration = parseInt(match[1]), revenue = parseInt(match[2]), count = parseInt(match[3]);
+                    const key = `${duration}-${count}`;
+                    let realName = staff.name; const nameMatch = rawLine.match(/^([^\d\s]+)/); if (nameMatch && !nameMatch[1].includes(':')) realName = nameMatch[1];
+                    let extra_money = 0; services.forEach(svc => { if (rawLine.toLowerCase().includes(svc.name.toLowerCase())) extra_money += svc.price; });
+                    const base_comm = commTable[key] || 0; const total_miss = base_comm + extra_money; const base_cost = costTable[key] || 0;
+                    let aunt_inc = revenue - base_cost - extra_money; if (AUNT_EXTRA_NAMES.includes(realName)) aunt_inc += 100;
+                    const aunt_disp = Math.floor(aunt_inc / 100); const balance = revenue - total_miss; const work = WORK_UNIT_TABLE[duration] || 0;
+                    html += `<tr><td><div style="font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; width:70px;">${rawLine}</div></td><td contenteditable="true" oninput="onCellEdit(this)" class="col-extra">${extra_money}</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-base">${base_comm}</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-aunt"><b>${aunt_disp}</b></td><td contenteditable="true" oninput="onCellEdit(this)" class="col-rev text-green">${revenue}</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-comm text-red">${total_miss}</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-bal text-blue">${balance}</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-work">${work}</td></tr>`;
+                } else {
+                     html += `<tr class="row-error"><td>手動</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-extra">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-base">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-aunt">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-rev">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-comm">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-bal">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-work">0</td></tr>`;
+                }
+            });
+        });
+        document.getElementById('table_body').innerHTML = html;
+        updateTotalsFromDOM();
+    }
+    function onCellEdit(cell) { cell.classList.add('manual-edit'); updateTotalsFromDOM(); }
+    function updateTotalsFromDOM() {
+        let t_rev = 0, t_com = 0, t_aunt = 0, t_bal = 0, t_wk = 0;
+        document.querySelectorAll('#table_body tr:not(.group-header)').forEach(row => {
+            const getVal = (cls) => { const c = row.querySelector('.'+cls); if(!c)return 0; return parseFloat(c.innerText.replace(/[^\d.-]/g, ''))||0; };
+            t_aunt += getVal('col-aunt'); t_rev += getVal('col-rev'); t_com += getVal('col-comm'); t_bal += getVal('col-bal'); t_wk += getVal('col-work');
+        });
+        document.getElementById('total_aunt').innerText = t_aunt; document.getElementById('total_revenue').innerText = t_rev.toLocaleString(); document.getElementById('total_commission').innerText = t_com.toLocaleString(); document.getElementById('total_balance').innerText = t_bal.toLocaleString(); document.getElementById('total_work').innerText = t_wk;
+    }
+
+    initSchedule(); renderServices();
+</script>
+</body>
+</html>
