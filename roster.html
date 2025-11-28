@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>服務資訊自動排版生成器 (V8)</title>
+    <style>
+        body { font-family: 'Microsoft JhengHei', 'Segoe UI', sans-serif; background-color: #f4f7f6; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        
+        /* 標題與導航區塊 */
+        .header-box { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px; margin-top: 10px; }
+        h2 { color: #007bff; margin: 0; }
+        .btn-back { text-decoration: none; background-color: #6c757d; color: white; padding: 8px 15px; border-radius: 5px; font-size: 14px; transition: 0.2s; }
+        .btn-back:hover { background-color: #5a6268; }
+
+        textarea, input[type="text"] { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; resize: vertical; font-family: 'Microsoft JhengHei', sans-serif; }
+        .input-group label { font-weight: bold; display: block; margin-bottom: 5px; color: #333; }
+        
+        /* 生成按鈕 */
+        .btn-generate { background-color: #28a745; color: white; padding: 12px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; transition: background-color 0.3s; margin-top: 10px; width: 100%; font-weight: bold; }
+        .btn-generate:hover { background-color: #218838; }
+        
+        #output-container { margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; }
+        #output-area { background-color: #e9ecef; border: 1px dashed #6c757d; padding: 20px; min-height: 200px; white-space: pre-wrap; word-break: break-word; border-radius: 5px; font-family: monospace; font-size: 14px; line-height: 1.5; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header-box">
+        <h2>📋 服務資訊分區輸入 (V8)</h2>
+        <a href="index.html" class="btn-back">↩ 回首頁</a>
+    </div>
+
+    <p style="color:#666; font-size: 0.9em; margin-bottom: 20px;">說明：身體密碼區塊支援「智慧分行」，若格式正確將自動拆分為三行顯示。</p>
+
+    <div class="input-group">
+        <label for="input-name">姓名 (e.g., 【TH】楠楠)</label>
+        <input type="text" id="input-name" placeholder="請輸入姓名">
+    </div>
+
+    <div class="input-group">
+        <label for="input-features">✨ 吸睛特色 (請貼上所有文案，可多行)</label>
+        <textarea id="input-features" rows="4" placeholder="e.g., J罩杯奶泡滑到變態..."></textarea>
+    </div>
+
+    <div class="input-group">
+        <label for="input-body">💖 身體密碼 (請貼上所有資訊)</label>
+        <textarea id="input-body" rows="3" placeholder="格式範例：身體密碼:160/50/E/21 溝通語言:中文 上班時段【12:00~20:00】">身體密碼:160/50/天然J奶/21歲 溝通語言: 英文溝通 上班時段【13:00~02:00】</textarea>
+    </div>
+
+    <div class="input-group">
+        <label for="input-core-services">👑 核心服務 (All-in-One)</label>
+        <textarea id="input-core-services" rows="4" placeholder="e.g., 共浴/按摩/水中簫/無套吹/舌吻..."></textarea>
+    </div>
+
+    <div class="input-group">
+        <label for="input-special-services">🎁 特別服務 (一行一個)</label>
+        <textarea id="input-special-services" rows="3">⭐️免費挑逗艷舞
+⭐️配合情趣用品 (客自備)</textarea>
+    </div>
+    
+    <div class="input-group">
+        <label for="input-packages">💰 方案選擇 (留白將使用預設值)</label>
+        <textarea id="input-packages" rows="4" placeholder="e.g., 🔅40💲2300_1s&#10;🔅60💲2700_1s"></textarea>
+    </div>
+
+    <div class="input-group">
+        <label for="input-addons">✅ 加值服務 (輸入項目即可，程式會自動移除重複的✅)</label>
+        <textarea id="input-addons" rows="2">✅顏射+500
+✅無套內射+1000</textarea>
+    </div>
+
+    <div class="input-group">
+        <label for="input-longterm">⏳ 長鍾方案</label>
+        <textarea id="input-longterm" rows="2">3+1
+5+3</textarea>
+    </div>
+
+    <button onclick="generateOutput()" class="btn-generate">生成排版結果</button>
+
+    <div id="output-container">
+        <h3>📝 排版結果 (請全選複製)</h3>
+        <textarea id="output-area" rows="25" readonly onclick="this.select()"></textarea>
+    </div>
+</div>
+
+<script>
+    function generateOutput() {
+        // 1. 獲取所有輸入
+        const nameInput = document.getElementById('input-name').value.trim();
+        const featuresInput = document.getElementById('input-features').value.trim();
+        const bodyInput = document.getElementById('input-body').value.trim();
+        const coreServicesInput = document.getElementById('input-core-services').value.trim();
+        const specialServicesInput = document.getElementById('input-special-services').value.trim();
+        const packagesInput = document.getElementById('input-packages').value.trim();
+        const addonsInput = document.getElementById('input-addons').value.trim();
+        const longtermInput = document.getElementById('input-longterm').value.trim();
+
+        // 2. 數據清洗與準備
+        const nameMatch = nameInput.match(/【(.*?)】(.*)/);
+        const nameOutput = nameMatch ? `【${nameMatch[1]}】${nameMatch[2].trim()}` : nameInput;
+        
+        // 身體密碼轉換 (V8 彈性分行邏輯)
+        let bodyOutput = '💖 身體密碼\n';
+        if (bodyInput) {
+            // 使用正規表達式分離三個部分
+            const match = bodyInput.match(/(身體密碼:.*?)\s(溝通語言:.*?)\s(上班時段【.*?】)/);
+            
+            if (match) {
+                // 數據存在，輸出三行
+                const bodyData = match[1].trim(); 
+                const langData = match[2].trim(); 
+                const timeData = match[3].trim(); 
+
+                const hasBodyData = bodyData.match(/:(\s*\d+\/\d+\/.*)/); 
+                
+                if (hasBodyData && hasBodyData[1].trim() !== '') {
+                    bodyOutput += `${bodyData}\n`;
+                }
+                if (langData && langData.length > 10) { 
+                    bodyOutput += `${langData}\n`;
+                }
+                if (timeData && timeData.length > 8) { 
+                    bodyOutput += `${timeData}\n`;
+                }
+            } else {
+                // 如果格式不匹配，直接分行
+                const lines = bodyInput.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                lines.forEach(line => {
+                    if (line.startsWith('身體密碼:') && line.length <= 5) return;
+                    bodyOutput += `${line}\n`;
+                });
+            }
+        }
+        bodyOutput += '\n';
+
+        // 方案選擇 (固定值處理)
+        const fixedPackages = `方案選擇:\n🔅40💲2300_1s\n🔅60💲2700_1s\n🔅60💲3300_2s\n🔅120💲4800-3s`;
+        const packagesOutput = packagesInput ? `💰 方案選擇 (1s = 1次)\n${packagesInput}` : `💰 方案選擇 (1s = 1次)\n${fixedPackages}`;
+
+        // 3. 生成 純文字 內容
+        let outputText = '';
+        outputText += `${nameOutput}\n\n`;
+        outputText += `✨ 吸睛特色\n${featuresInput}\n\n`;
+        outputText += bodyOutput;
+        outputText += `👑 核心服務 (All-in-One)\n${coreServicesInput}\n\n`;
+        outputText += `🎁 特別服務\n${specialServicesInput}\n\n`;
+        outputText += packagesOutput + '\n\n';
+        
+        outputText += `✅ 加值服務\n`;
+        const cleanAddons = addonsInput.split('\n').map(a => a.trim().replace(/✅\s*/g, '')).join('\n');
+        outputText += cleanAddons + '\n\n';
+
+        outputText += `長鍾\n${longtermInput}`;
+
+        document.getElementById('output-area').value = outputText;
+    }
+</script>
+
+</body>
+</html>
