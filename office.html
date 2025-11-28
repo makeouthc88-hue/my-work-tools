@@ -1,347 +1,428 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>分紅結算系統 v5.0 (Cloud)</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Roboto+Mono:wght@500;700&display=swap" rel="stylesheet">
-    
-    <style>
-        body { font-family: 'Noto Sans TC', sans-serif; background-color: #f8fafc; color: #1e293b; }
-        .font-mono { font-family: 'Roboto Mono', monospace; }
-        
-        /* 輸入框樣式 */
-        input { background: transparent; transition: all 0.2s; border-radius: 4px; }
-        input:focus { outline: none; background-color: rgba(255,255,255,0.5); }
-        input::placeholder { color: #cbd5e1; }
-        
-        /* 隱藏數字箭頭 */
-        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-        
-        /* 自定義滾動條 */
-        ::-webkit-scrollbar { width: 4px; height: 4px; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
 
-        /* 截圖時用的 class */
-        .print-text { padding: 0 4px; display: inline-block; white-space: nowrap; }
-        
-        /* 載入中遮罩 */
-        #loading-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.9); z-index: 50; display: flex; justify-content: center; align-items: center; flex-direction: column; }
-    </style>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>分紅結算系統 v6.2 (Cloud)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Roboto+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      background-color: #f8fafc;
+      color: #1e293b;
+    }
+
+    .font-mono {
+      font-family: 'Roboto Mono', monospace;
+    }
+
+    input {
+      background: transparent;
+      transition: all 0.2s;
+      border-radius: 4px;
+    }
+
+    input:focus {
+      outline: none;
+      background-color: rgba(255, 255, 255, 0.5);
+    }
+
+    input::placeholder {
+      color: #cbd5e1;
+    }
+
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 2px;
+    }
+
+    .print-text {
+      padding: 0 4px;
+      display: inline-block;
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      height: 8px;
+      width: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+    }
+
+    .status-online {
+      background-color: #10b981;
+      box-shadow: 0 0 8px #10b981;
+    }
+
+    .status-syncing {
+      background-color: #f59e0b;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
+
+      100% {
+        opacity: 1;
+      }
+    }
+  </style>
 </head>
+
 <body class="py-6 px-4">
 
-    <div id="loading-overlay">
-        <div class="text-2xl font-bold text-slate-700 mb-2">正在連線至資料庫...</div>
-        <div class="text-sm text-slate-400">Syncing with Firebase</div>
+  <div id="assign-modal" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100">
+      <div class="bg-slate-100 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+        <h3 class="font-bold text-slate-700">誰代墊了這筆費用？</h3>
+        <button onclick="window.closeAssignModal()" class="text-slate-400 hover:text-slate-600">✕</button>
+      </div>
+      <div class="p-6">
+        <p id="modal-exp-info" class="text-sm text-slate-500 mb-4 font-mono border-l-4 border-rose-400 pl-3 bg-rose-50 py-2"></p>
+        <div id="assign-buttons" class="grid grid-cols-1 gap-2">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-5xl mx-auto mb-6 flex flex-col md:flex-row justify-between items-center gap-4 no-export">
+    <div class="flex items-center text-xs text-slate-500 font-mono bg-white px-3 py-1.5 rounded-full shadow-sm border border-slate-200">
+      <span id="sync-status-dot" class="status-dot status-syncing"></span>
+      <span id="sync-status-text">Connecting...</span>
+    </div>
+    <div class="flex gap-3">
+      <button onclick="window.resetCloudData()" class="text-sm text-slate-400 hover:text-red-500 transition px-3 py-2">
+        🗑️ 清空
+      </button>
+      <button onclick="window.downloadReport()" class="bg-slate-800 hover:bg-black text-white px-6 py-2.5 rounded-lg shadow-lg flex items-center gap-2 font-bold transition active:scale-95">
+        <span id="btn-text">📸 下載 JPG 報表</span>
+      </button>
+    </div>
+  </div>
+
+  <div id="report-card" class="max-w-5xl mx-auto bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden relative">
+
+    <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-8">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+        <div>
+          <h1 class="text-3xl font-bold tracking-tight mb-1">股東分紅結算表</h1>
+          <p class="text-slate-400 text-sm font-mono opacity-80">CLOUD SYNC REPORT</p>
+        </div>
+        <div class="w-full md:w-auto">
+          <label class="block text-[10px] text-slate-400 uppercase font-bold mb-1 tracking-wider">結算日期範圍</label>
+          <input type="text" id="date-range" class="bg-white/10 border border-white/20 text-white text-center rounded px-3 py-1.5 w-full md:w-64 focus:border-blue-400 placeholder-white/30 text-sm font-mono" placeholder="YYYY/MM/DD - YYYY/MM/DD" onchange="window.saveData()">
+        </div>
+      </div>
     </div>
 
-    <div class="max-w-5xl mx-auto mb-6 flex flex-col md:flex-row justify-between items-center gap-4 no-export">
-        <div class="flex items-center gap-4">
-            <div class="text-xs text-slate-400 font-mono">SYSTEM v5.0 (Cloud)</div>
-            <div id="cloud-status" class="text-xs font-bold px-2 py-1 rounded bg-slate-200 text-slate-500 transition-colors">
-                ⏳ 初始化...
-            </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-100 border-b border-slate-100">
+
+      <div class="p-6 bg-emerald-50/20">
+        <p class="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">總收入 REVENUE</p>
+        <div class="flex items-center">
+          <span class="text-xl text-emerald-500 mr-2 font-bold">$</span>
+          <input type="number" id="income" class="text-3xl font-mono font-bold text-emerald-700 w-full bg-transparent" placeholder="0" oninput="window.calculate()">
         </div>
-        <div class="flex gap-3">
-            <button onclick="window.resetData()" class="text-sm text-slate-400 hover:text-red-500 transition px-3 py-2">
-                ↺ 重置預設值
-            </button>
-            <button onclick="downloadReport()" class="bg-slate-800 hover:bg-black text-white px-6 py-2.5 rounded-lg shadow-lg flex items-center gap-2 font-bold transition active:scale-95">
-                <span id="btn-text">📸 下載 JPG 報表</span>
-            </button>
+      </div>
+
+      <div class="p-6 bg-rose-50/20 relative group">
+        <div class="flex justify-between items-center mb-1">
+          <p class="text-[10px] font-bold text-rose-600 uppercase tracking-widest">總支出 EXPENSES</p>
+          <button onclick="window.addExpense()" class="opacity-0 group-hover:opacity-100 transition text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded font-bold no-export">+ 項目</button>
         </div>
+        <div class="flex items-center mb-3">
+          <span class="text-lg text-rose-500 mr-2 font-bold">$</span>
+          <span id="total-expenses" class="text-2xl font-mono font-bold text-rose-600">0</span>
+        </div>
+        <div id="expense-list" class="space-y-1 pr-1">
+        </div>
+      </div>
+
+      <div class="p-6">
+        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">淨利 NET PROFIT</p>
+        <div class="flex items-center">
+          <span class="text-xl text-slate-300 mr-2 font-bold">$</span>
+          <span id="net-profit" class="text-3xl font-mono font-bold text-slate-800">0</span>
+        </div>
+        <div class="mt-4 flex items-center gap-2">
+          <span id="percent-status" class="text-xs font-bold px-2 py-1 rounded bg-slate-100 text-slate-500">檢查中...</span>
+        </div>
+      </div>
     </div>
 
-    <div id="report-card" class="max-w-5xl mx-auto bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden relative">
-        
-        <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-8">
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
-                <div>
-                    <h1 class="text-3xl font-bold tracking-tight mb-1">股東分紅結算表</h1>
-                    <p class="text-slate-400 text-sm font-mono opacity-80">MONTHLY SETTLEMENT REPORT</p>
-                </div>
-                <div class="w-full md:w-auto">
-                    <label class="block text-[10px] text-slate-400 uppercase font-bold mb-1 tracking-wider">結算日期範圍</label>
-                    <input type="text" id="date-range" 
-                           class="bg-white/10 border border-white/20 text-white text-center rounded px-3 py-1.5 w-full md:w-64 focus:border-blue-400 placeholder-white/30 text-sm font-mono"
-                           placeholder="YYYY/MM/DD - YYYY/MM/DD" onchange="triggerSave()">
-                </div>
-            </div>
-        </div>
+    <div class="p-6 md:p-8">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">
+          <div class="w-1 h-5 bg-blue-600 rounded-full"></div>
+          分配詳情
+        </h3>
+        <button onclick="window.addShareholder()" class="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-full font-bold transition no-export">
+          + 新增股東
+        </button>
+      </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-100 border-b border-slate-100">
-            
-            <div class="p-6 bg-emerald-50/20">
-                <p class="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">總收入 REVENUE</p>
-                <div class="flex items-center">
-                    <span class="text-xl text-emerald-500 mr-2 font-bold">$</span>
-                    <input type="number" id="income" class="text-3xl font-mono font-bold text-emerald-700 w-full bg-transparent" placeholder="0" oninput="calculateAndSave()">
-                </div>
-            </div>
-
-            <div class="p-6 bg-rose-50/20 relative group">
-                <div class="flex justify-between items-center mb-1">
-                    <p class="text-[10px] font-bold text-rose-600 uppercase tracking-widest">總支出 EXPENSES</p>
-                    <button onclick="window.addExpense()" class="opacity-0 group-hover:opacity-100 transition text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded font-bold no-export">+ 項目</button>
-                </div>
-                <div class="flex items-center mb-3">
-                    <span class="text-lg text-rose-500 mr-2 font-bold">$</span>
-                    <span id="total-expenses" class="text-2xl font-mono font-bold text-rose-600">0</span>
-                </div>
-                <div id="expense-list" class="space-y-1 max-h-40 overflow-y-auto pr-1">
-                    </div>
-            </div>
-
-            <div class="p-6">
-                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">淨利 NET PROFIT</p>
-                <div class="flex items-center">
-                    <span class="text-xl text-slate-300 mr-2 font-bold">$</span>
-                    <span id="net-profit" class="text-3xl font-mono font-bold text-slate-800">0</span>
-                </div>
-                <div class="mt-4 flex items-center gap-2">
-                    <span id="percent-status" class="text-xs font-bold px-2 py-1 rounded bg-slate-100 text-slate-500">檢查中...</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="p-6 md:p-8">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">
-                    <div class="w-1 h-5 bg-blue-600 rounded-full"></div>
-                    分配詳情
-                </h3>
-                <button onclick="window.addShareholder()" class="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-full font-bold transition no-export">
-                    + 新增股東
-                </button>
-            </div>
-
-            <div class="overflow-x-auto rounded-lg border border-slate-200">
-                <table class="w-full text-left border-collapse min-w-[700px]">
-                    <thead>
-                        <tr class="bg-slate-50 text-xs text-slate-500 font-bold uppercase border-b border-slate-200">
-                            <th class="py-3 pl-4 w-24">股東</th>
-                            <th class="py-3 text-center w-16">%</th>
-                            <th class="py-3 text-right w-28">分紅</th>
-                            <th class="py-3 pl-6 border-l border-slate-100">代墊 / 調整 (Adjustment)</th>
-                            <th class="py-3 text-right w-36 bg-amber-50 text-amber-800/70 border-l border-amber-100">實領金額</th>
-                            <th class="w-10 no-export"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="shareholder-list" class="divide-y divide-slate-100 text-sm">
-                        </tbody>
-                    <tfoot class="bg-slate-50 font-bold text-slate-600 border-t border-slate-200">
-                        <tr>
-                            <td colspan="2" class="py-3 text-right pr-4 text-[10px] uppercase tracking-wide">Total Amount</td>
-                            <td class="py-3 text-right font-mono text-slate-800" id="sum-dividend">0</td>
-                            <td class="py-3 text-right pr-6 text-[10px] font-normal text-slate-400">(Adjust: <span id="sum-adjust">0</span>)</td>
-                            <td class="py-3 text-right font-mono text-xl text-amber-600 bg-amber-50" id="sum-grand">0</td>
-                            <td class="no-export"></td>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
-        </div>
-
-        <div class="bg-slate-50 px-8 py-3 border-t border-slate-200 flex justify-between items-center text-[10px] text-slate-300 uppercase">
-            <span>Confidential Financial Report</span>
-            <span>Generated: <span id="print-date"></span></span>
-        </div>
+      <div class="overflow-x-auto rounded-lg border border-slate-200">
+        <table class="w-full text-left border-collapse min-w-[700px]">
+          <thead>
+            <tr class="bg-slate-50 text-xs text-slate-500 font-bold uppercase border-b border-slate-200">
+              <th class="py-3 pl-4 w-24">股東</th>
+              <th class="py-3 text-center w-16">%</th>
+              <th class="py-3 text-right w-28">分紅</th>
+              <th class="py-3 pl-6 border-l border-slate-100">代墊 / 調整 (Adjustment)</th>
+              <th class="py-3 text-right w-36 bg-amber-50 text-amber-800/70 border-l border-amber-100">實領金額</th>
+              <th class="w-10 no-export"></th>
+            </tr>
+          </thead>
+          <tbody id="shareholder-list" class="divide-y divide-slate-100 text-sm">
+          </tbody>
+          <tfoot class="bg-slate-50 font-bold text-slate-600 border-t border-slate-200">
+            <tr>
+              <td colspan="2" class="py-3 text-right pr-4 text-[10px] uppercase tracking-wide">Total Amount</td>
+              <td class="py-3 text-right font-mono text-slate-800" id="sum-dividend">0</td>
+              <td class="py-3 text-right pr-6 text-[10px] font-normal text-slate-400">(Adjust: <span id="sum-adjust">0</span>)</td>
+              <td class="py-3 text-right font-mono text-xl text-amber-600 bg-amber-50" id="sum-grand">0</td>
+              <td class="no-export"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
 
-    <div class="h-24"></div>
+    <div class="bg-slate-50 px-8 py-3 border-t border-slate-200 flex justify-between items-center text-[10px] text-slate-300 uppercase">
+      <span>Confidential Financial Report</span>
+      <span>Generated: <span id="print-date"></span></span>
+    </div>
+  </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+  <div class="h-24"></div>
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyDsUsWuynci0DP71veuu19Ht8bJmhHSkHs",
-            authDomain: "worktools-f53e5.firebaseapp.com",
-            databaseURL: "https://worktools-f53e5-default-rtdb.firebaseio.com",
-            projectId: "worktools-f53e5",
-            storageBucket: "worktools-f53e5.firebasestorage.app",
-            messagingSenderId: "950551082090",
-            appId: "1:950551082090:web:3c2c4962b5ffa044aec613",
-            measurementId: "G-EKPY3SC0BR"
-        };
-
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
-        const dbRef = ref(db, 'settlements/current_v5'); // 資料儲存路徑
-
-        let isFirstLoad = true;
-        let saveTimeout = null;
-
-        // 全域變數供 HTML onclick 使用
-        window.expenses = [];
-        window.shareholders = [];
-        let income = 0;
-        let dateRange = '';
-
-        // === 監聽雲端資料 (讀取) ===
-        onValue(dbRef, (snapshot) => {
-            const data = snapshot.val();
-            
-            // 如果是第一次載入，或者資料有更新，我們更新本地變數
-            if (data) {
-                window.expenses = data.expenses || [];
-                window.shareholders = data.shareholders || [];
-                income = data.income || 0;
-                dateRange = data.dateRange || '';
-                
-                // 只有第一次載入或非編輯狀態時，才更新 DOM 避免干擾打字
-                // 這裡為了簡單起見，每次都渲染，但透過 debounce 減少衝突
-                updateDOMValues(); 
-                renderAll();
-            } else {
-                // 資料庫是空的 (第一次使用)，載入預設值
-                if(isFirstLoad) {
-                    window.resetData(false); // false = don't confirm
-                }
-            }
-
-            // 移除 Loading
-            if(isFirstLoad) {
-                document.getElementById('loading-overlay').style.display = 'none';
-                isFirstLoad = false;
-            }
-            updateStatus('cloud-synced');
-        });
-
-        // 更新 DOM 數值 (不重新渲染列表，只填入值，防止游標跳掉 - 簡易版直接重繪)
-        function updateDOMValues() {
-            const incEl = document.getElementById('income');
-            if(document.activeElement !== incEl) incEl.value = income;
-
-            const dateEl = document.getElementById('date-range');
-            if(document.activeElement !== dateEl) dateEl.value = dateRange;
+  <script type="module">
+    import {
+      initializeApp
+    } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+    import {
+      getDatabase,
+      ref,
+      set,
+      onValue
+    } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-database.js";
+    const firebaseConfig = {
+      apiKey: "AIzaSyDsUsWuynci0DP71veuu19Ht8bJmhHSkHs",
+      authDomain: "worktools-f53e5.firebaseapp.com",
+      databaseURL: "https://worktools-f53e5-default-rtdb.firebaseio.com",
+      projectId: "worktools-f53e5",
+      storageBucket: "worktools-f53e5.firebasestorage.app",
+      messagingSenderId: "950551082090",
+      appId: "1:950551082090:web:3c2c4962b5ffa044aec613",
+      measurementId: "G-EKPY3SC0BR"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const dbRef = ref(db, 'office_settlement_v1');
+    let shareholders = [];
+    let expenses = [];
+    let income = 0;
+    let isRemoteUpdate = false;
+    let saveTimeout = null;
+    let currentExpIndex = -1;
+    const defaultData = {
+      shareholders: [{
+          name: 'OG',
+          percent: 67,
+          adjustments: [{
+            item: '車資',
+            amount: 500
+          }]
+        },
+        {
+          name: 'C',
+          percent: 28,
+          adjustments: []
+        },
+        {
+          name: '黑',
+          percent: 5,
+          adjustments: []
         }
-
-        // === 寫入雲端 (儲存) ===
-        // 使用 Debounce 防止打字時瘋狂寫入資料庫
-        window.triggerSave = function() {
-            updateStatus('saving');
-            clearTimeout(saveTimeout);
-            saveTimeout = setTimeout(() => {
-                saveToFirebase();
-            }, 500); // 停止打字 0.5 秒後才上傳
+      ],
+      expenses: [{
+        name: '收錢',
+        amount: 1200,
+        paidBy: ''
+      }], // 加入 paidBy 欄位預設
+      income: 22227,
+      dateRange: ''
+    };
+    onValue(dbRef, (snapshot) => {
+      updateStatus('syncing');
+      const data = snapshot.val();
+      if (data) {
+        shareholders = data.shareholders || [];
+        expenses = data.expenses || [];
+        income = data.income || 0;
+        document.getElementById('date-range').value = data.dateRange || '';
+      } else {
+        shareholders = defaultData.shareholders;
+        expenses = defaultData.expenses;
+        income = defaultData.income;
+        saveDataToCloud();
+      }
+      isRemoteUpdate = true;
+      document.getElementById('income').value = income;
+      renderAll();
+      isRemoteUpdate = false;
+      updateStatus('online');
+      document.getElementById('print-date').innerText = new Date().toLocaleDateString();
+    }, (error) => {
+      console.error(error);
+      document.getElementById('sync-status-text').innerText = "Error!";
+    });
+    window.calculate = function() {
+      let incInput = document.getElementById('income').value;
+      income = incInput;
+      let totalExp = expenses.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+      let net = (parseFloat(incInput) || 0) - totalExp;
+      document.getElementById('total-expenses').innerText = totalExp.toLocaleString();
+      document.getElementById('net-profit').innerText = net.toLocaleString();
+      let totalPercent = 0;
+      let sumDiv = 0,
+        sumAdj = 0,
+        sumGrand = 0;
+      shareholders.forEach((sh, idx) => {
+        let div = Math.floor(net * (sh.percent / 100));
+        let adjTotal = 0;
+        if (sh.adjustments) {
+          adjTotal = sh.adjustments.reduce((sum, adj) => sum + (parseFloat(adj.amount) || 0), 0);
         }
+        let grand = div + adjTotal;
+        const divEl = document.getElementById(`sh-div-${idx}`);
+        const grandEl = document.getElementById(`sh-grand-${idx}`);
+        if (divEl) divEl.innerText = div.toLocaleString();
+        if (grandEl) grandEl.innerText = grand.toLocaleString();
+        totalPercent += parseFloat(sh.percent);
+        sumDiv += div;
+        sumAdj += adjTotal;
+        sumGrand += grand;
+      });
+      document.getElementById('sum-dividend').innerText = sumDiv.toLocaleString();
+      document.getElementById('sum-adjust').innerText = sumAdj.toLocaleString();
+      document.getElementById('sum-grand').innerText = sumGrand.toLocaleString();
+      const statusEl = document.getElementById('percent-status');
+      if (Math.abs(totalPercent - 100) < 0.01) {
+        statusEl.innerHTML = "✓ 持股比例 100%";
+        statusEl.className = "text-xs font-bold px-2 py-1 rounded bg-emerald-100 text-emerald-700";
+      } else {
+        statusEl.innerHTML = `⚠️ 異常: ${totalPercent}%`;
+        statusEl.className = "text-xs font-bold px-2 py-1 rounded bg-rose-100 text-rose-700";
+      }
+      if (!isRemoteUpdate) window.saveData();
+    }
+    window.saveData = function() {
+      updateStatus('syncing');
+      if (saveTimeout) clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(saveDataToCloud, 500);
+    }
 
-        function saveToFirebase() {
-            set(dbRef, {
-                income: document.getElementById('income').value,
-                dateRange: document.getElementById('date-range').value,
-                expenses: window.expenses,
-                shareholders: window.shareholders,
-                lastUpdated: new Date().toISOString()
-            }).then(() => {
-                updateStatus('synced');
-            }).catch((err) => {
-                console.error(err);
-                updateStatus('error');
-            });
-        }
+    function saveDataToCloud() {
+      const dataToSave = {
+        income: document.getElementById('income').value,
+        dateRange: document.getElementById('date-range').value,
+        expenses: expenses,
+        shareholders: shareholders,
+        lastUpdated: new Date().toISOString()
+      };
+      set(dbRef, dataToSave).then(() => {
+        updateStatus('online');
+      }).catch((err) => {
+        console.error("Save failed", err);
+      });
+    }
 
-        // 狀態顯示 UI
-        function updateStatus(state) {
-            const el = document.getElementById('cloud-status');
-            if(state === 'saving') {
-                el.innerText = "💾 儲存中...";
-                el.className = "text-xs font-bold px-2 py-1 rounded bg-amber-100 text-amber-600";
-            } else if (state === 'synced' || state === 'cloud-synced') {
-                el.innerText = "☁️ 已同步";
-                el.className = "text-xs font-bold px-2 py-1 rounded bg-emerald-100 text-emerald-600";
-            } else if (state === 'error') {
-                el.innerText = "❌ 連線失敗";
-                el.className = "text-xs font-bold px-2 py-1 rounded bg-red-100 text-red-600";
-            }
-        }
+    function updateStatus(state) {
+      const dot = document.getElementById('sync-status-dot');
+      const text = document.getElementById('sync-status-text');
+      if (state === 'online') {
+        dot.className = "status-dot status-online";
+        text.innerText = "Cloud Synced";
+        text.className = "text-emerald-600 font-bold";
+      } else {
+        dot.className = "status-dot status-syncing";
+        text.innerText = "Syncing...";
+        text.className = "text-amber-500 font-bold";
+      }
+    }
 
-        // === 暴露給 window 的操作函式 ===
-        window.calculateAndSave = function() {
-            calculate();
-            window.triggerSave();
-        }
+    function renderAll() {
+      renderExpenses();
+      renderShareholders();
+      window.calculate();
+    }
 
-        window.updateExp = (i, k, v) => { window.expenses[i][k] = v; if(k==='amount') calculate(); window.triggerSave(); };
-        window.addExpense = () => { window.expenses.push({name:'', amount:''}); renderAll(); window.triggerSave(); };
-        window.removeExp = (i) => { window.expenses.splice(i, 1); renderAll(); window.triggerSave(); };
-
-        window.updateSh = (i, k, v) => { window.shareholders[i][k] = k==='percent'? parseFloat(v)||0 : v; if(k==='percent') calculate(); window.triggerSave(); };
-        window.addShareholder = () => { window.shareholders.push({name:'New', percent:0, adjustments:[]}); renderAll(); window.triggerSave(); };
-        window.removeSh = (i) => { if(confirm('刪除?')) { window.shareholders.splice(i,1); renderAll(); window.triggerSave(); } };
-        
-        window.addAdj = (si) => { window.shareholders[si].adjustments.push({item:'', amount:''}); renderShareholders(); window.triggerSave(); };
-        window.removeAdj = (si, ai) => { window.shareholders[si].adjustments.splice(ai, 1); renderShareholders(); calculate(); window.triggerSave(); };
-        window.updateAdj = (si, ai, k, v) => { window.shareholders[si].adjustments[ai][k] = v; if(k==='amount') calculate(); window.triggerSave(); };
-
-        window.resetData = (ask = true) => {
-            if(!ask || confirm('確定重置為預設範本？(這會覆蓋雲端資料)')) {
-                const defaultData = {
-                    shareholders: [
-                        { name: 'OG', percent: 67, adjustments: [{item: '車資', amount: 500}] },
-                        { name: 'C', percent: 28, adjustments: [] },
-                        { name: '黑', percent: 5, adjustments: [] }
-                    ],
-                    expenses: [{ name: '收錢', amount: 1200 }],
-                    income: 22227,
-                    dateRange: ''
-                };
-                
-                window.expenses = defaultData.expenses;
-                window.shareholders = defaultData.shareholders;
-                document.getElementById('income').value = defaultData.income;
-                document.getElementById('date-range').value = defaultData.dateRange;
-                
-                renderAll();
-                saveToFirebase(); // Force save
-            }
-        }
-
-        // 初始化日期
-        document.getElementById('print-date').innerText = new Date().toLocaleDateString();
-
-        // 綁定 DOM 邏輯
-        function renderAll() {
-            renderExpenses();
-            renderShareholders();
-            calculate();
-        }
-
-        function renderExpenses() {
-            const list = document.getElementById('expense-list');
-            list.innerHTML = window.expenses.map((exp, i) => `
+    function renderExpenses() {
+      const list = document.getElementById('expense-list');
+      list.innerHTML = expenses.map((exp, i) => {
+        // 判斷是否已經有指派給股東
+        const hasPayer = exp.paidBy && exp.paidBy.trim() !== '';
+        // 如果有代墊人，顯示名字標籤；如果沒有，顯示分配按鈕
+        const actionHtml = hasPayer ?
+          `<span class="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded ml-2 font-bold whitespace-nowrap" title="代墊人">${exp.paidBy}</span>` :
+          `<button onclick="window.openAssignModal(${i})" class="text-slate-300 hover:text-blue-500 opacity-0 group-hover:opacity-100 px-1 transition no-export ml-1" title="轉入股東代墊">➥</button>`;
+        return `
                 <div class="flex gap-2 items-center text-sm group mb-1">
                     <input type="text" value="${exp.name}" onchange="window.updateExp(${i}, 'name', this.value)" 
-                           class="flex-1 border-b border-transparent focus:border-rose-300 text-slate-600 py-0.5 bg-transparent" placeholder="項目">
+                           class="flex-1 min-w-0 border-b border-transparent focus:border-rose-300 text-slate-600 py-0.5 bg-transparent" placeholder="項目">
                     <input type="number" value="${exp.amount}" onkeyup="window.updateExp(${i}, 'amount', this.value)" 
                            class="w-20 border-b border-transparent focus:border-rose-300 text-right font-mono text-rose-600 py-0.5 bg-transparent" placeholder="$">
+                    
+                    ${actionHtml}
+                    
                     <button onclick="window.removeExp(${i})" class="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 px-1 transition no-export">×</button>
                 </div>
-            `).join('');
-        }
+            `
+      }).join('');
+    }
 
-        function renderShareholders() {
-            const list = document.getElementById('shareholder-list');
-            list.innerHTML = window.shareholders.map((sh, idx) => {
-                let adjHtml = (sh.adjustments || []).map((adj, aIdx) => `
-                    <div class="flex items-center gap-2 mb-1 group/adj">
-                        <div class="flex-1 flex items-center bg-slate-50 rounded px-2 py-0.5 border border-slate-100 hover:border-blue-200 transition-colors">
-                            <span class="text-slate-300 text-xs mr-1 select-none">↳</span>
-                            <input type="text" value="${adj.item}" onchange="window.updateAdj(${idx}, ${aIdx}, 'item', this.value)" 
-                                   class="w-full text-xs text-slate-600 bg-transparent font-medium" placeholder="項目">
-                            <input type="number" value="${adj.amount}" onkeyup="window.updateAdj(${idx}, ${aIdx}, 'amount', this.value)" 
-                                   class="w-16 text-right text-xs font-mono text-slate-700 bg-transparent" placeholder="$">
+    function renderShareholders() {
+      const list = document.getElementById('shareholder-list');
+      list.innerHTML = shareholders.map((sh, idx) => {
+        let adjHtml = "";
+        if (sh.adjustments) {
+          adjHtml = sh.adjustments.map((adj, aIdx) => `
+                        <div class="flex items-center gap-2 mb-1 group/adj">
+                            <div class="flex-1 flex items-center bg-slate-50 rounded px-2 py-0.5 border border-slate-100 hover:border-blue-200 transition-colors">
+                                <span class="text-slate-300 text-xs mr-1 select-none">↳</span>
+                                <input type="text" value="${adj.item}" onchange="window.updateAdj(${idx}, ${aIdx}, 'item', this.value)" 
+                                    class="w-full text-xs text-slate-600 bg-transparent font-medium" placeholder="項目">
+                                <input type="number" value="${adj.amount}" onkeyup="window.updateAdj(${idx}, ${aIdx}, 'amount', this.value)" 
+                                    class="w-16 text-right text-xs font-mono text-slate-700 bg-transparent" placeholder="$">
+                            </div>
+                            <button onclick="window.removeAdj(${idx}, ${aIdx})" class="text-slate-300 hover:text-red-400 opacity-0 group-hover/adj:opacity-100 transition px-1 text-xs no-export">×</button>
                         </div>
-                        <button onclick="window.removeAdj(${idx}, ${aIdx})" class="text-slate-300 hover:text-red-400 opacity-0 group-hover/adj:opacity-100 transition px-1 text-xs no-export">×</button>
-                    </div>
-                `).join('');
-
-                return `
+                    `).join('');
+        }
+        return `
                 <tr class="group hover:bg-slate-50/50 transition-colors">
                     <td class="py-3 pl-4 align-top pt-4">
                         <input type="text" value="${sh.name}" onchange="window.updateSh(${idx}, 'name', this.value)" 
@@ -366,102 +447,159 @@
                     </td>
                 </tr>
                 `;
-            }).join('');
-        }
-
-        function calculate() {
-            let inc = parseFloat(document.getElementById('income').value) || 0;
-            let totalExp = window.expenses.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
-            let net = inc - totalExp;
-
-            document.getElementById('total-expenses').innerText = totalExp.toLocaleString();
-            document.getElementById('net-profit').innerText = net.toLocaleString();
-
-            let totalPercent = 0;
-            let sumDiv = 0, sumAdj = 0, sumGrand = 0;
-
-            window.shareholders.forEach((sh, idx) => {
-                let div = Math.floor(net * (sh.percent / 100));
-                let adjTotal = (sh.adjustments || []).reduce((sum, adj) => sum + (parseFloat(adj.amount) || 0), 0);
-                let grand = div + adjTotal;
-
-                const divEl = document.getElementById(`sh-div-${idx}`);
-                const grandEl = document.getElementById(`sh-grand-${idx}`);
-                if(divEl) divEl.innerText = div.toLocaleString();
-                if(grandEl) grandEl.innerText = grand.toLocaleString();
-
-                totalPercent += parseFloat(sh.percent);
-                sumDiv += div;
-                sumAdj += adjTotal;
-                sumGrand += grand;
-            });
-
-            document.getElementById('sum-dividend').innerText = sumDiv.toLocaleString();
-            document.getElementById('sum-adjust').innerText = sumAdj.toLocaleString();
-            document.getElementById('sum-grand').innerText = sumGrand.toLocaleString();
-
-            const statusEl = document.getElementById('percent-status');
-            if (Math.abs(totalPercent - 100) < 0.01) {
-                statusEl.innerHTML = "✓ 持股比例 100%";
-                statusEl.className = "text-xs font-bold px-2 py-1 rounded bg-emerald-100 text-emerald-700";
-            } else {
-                statusEl.innerHTML = `⚠️ 異常: ${totalPercent}%`;
-                statusEl.className = "text-xs font-bold px-2 py-1 rounded bg-rose-100 text-rose-700";
-            }
-        }
-    </script>
-
-    <script>
-        // === 截圖邏輯 (保持不變) ===
-        function downloadReport() {
-            const btnText = document.getElementById('btn-text');
-            btnText.innerText = "處理中...";
-            const originalNode = document.getElementById('report-card');
-            const cloneNode = originalNode.cloneNode(true);
-            cloneNode.style.width = "1000px";
-            cloneNode.style.position = "absolute";
-            cloneNode.style.top = "-9999px";
-            cloneNode.style.left = "-9999px";
-            cloneNode.style.zIndex = "-1";
-            document.body.appendChild(cloneNode);
-
-            const inputs = cloneNode.querySelectorAll('input');
-            inputs.forEach(input => {
-                const val = input.value;
-                const span = document.createElement('span');
-                span.innerText = val;
-                span.className = input.className + " print-text";
-                span.style.border = "none"; 
-                span.style.background = "transparent";
-                span.style.width = "auto";
-                if(input.parentElement) {
-                    input.parentElement.replaceChild(span, input);
-                }
-            });
-
-            const noExports = cloneNode.querySelectorAll('.no-export');
-            noExports.forEach(el => el.remove());
-
-            html2canvas(cloneNode, {
-                scale: 2,
-                backgroundColor: "#ffffff",
-                width: 1000,
-                windowWidth: 1000,
-                useCORS: true
-            }).then(canvas => {
-                const link = document.createElement('a');
-                link.download = `結算表_${document.getElementById('date-range').value || 'Report'}.jpg`;
-                link.href = canvas.toDataURL("image/jpeg", 0.95);
-                link.click();
-                document.body.removeChild(cloneNode);
-                btnText.innerText = "📸 下載 JPG 報表";
-            }).catch(err => {
-                alert("截圖失敗，請重試");
-                console.error(err);
-                document.body.removeChild(cloneNode);
-                btnText.innerText = "📸 下載 JPG 報表";
-            });
-        }
-    </script>
+      }).join('');
+    }
+    // === 功能按鈕邏輯 ===
+    window.openAssignModal = (expIdx) => {
+      const exp = expenses[expIdx];
+      if (!exp.name || !exp.amount) {
+        alert("請先填寫項目名稱與金額");
+        return;
+      }
+      currentExpIndex = expIdx;
+      document.getElementById('modal-exp-info').innerText = `轉入代墊: ${exp.name} $${exp.amount}`;
+      const btnContainer = document.getElementById('assign-buttons');
+      btnContainer.innerHTML = shareholders.map((sh, idx) => `
+                <button onclick="window.assignToShareholder(${idx})" 
+                    class="w-full text-left px-4 py-3 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 font-bold text-slate-600 border border-slate-200 transition flex justify-between items-center group">
+                    <span>${sh.name}</span>
+                    <span class="text-xs text-slate-300 group-hover:text-blue-400">選擇 ➜</span>
+                </button>
+            `).join('');
+      document.getElementById('assign-modal').classList.remove('hidden');
+    };
+    window.closeAssignModal = () => {
+      document.getElementById('assign-modal').classList.add('hidden');
+      currentExpIndex = -1;
+    };
+    window.assignToShareholder = (shIdx) => {
+      if (currentExpIndex === -1) return;
+      const exp = expenses[currentExpIndex];
+      // 1. 複製到股東代墊列表
+      if (!shareholders[shIdx].adjustments) shareholders[shIdx].adjustments = [];
+      shareholders[shIdx].adjustments.push({
+        item: exp.name, // 使用相同名稱
+        amount: exp.amount // 使用相同金額
+      });
+      // 2. 更新支出列表中的「代墊人」標記
+      expenses[currentExpIndex].paidBy = shareholders[shIdx].name;
+      window.closeAssignModal();
+      renderAll(); // 重新渲染所有區塊 (包含支出和股東)
+      window.saveData(); // 存檔
+    };
+    window.updateExp = (i, k, v) => {
+      expenses[i][k] = v;
+      if (k === 'amount') window.calculate();
+      else window.saveData();
+    };
+    window.addExpense = () => {
+      expenses.push({
+        name: '',
+        amount: '',
+        paidBy: ''
+      });
+      renderAll();
+      window.saveData();
+    };
+    window.removeExp = (i) => {
+      expenses.splice(i, 1);
+      renderAll();
+      window.saveData();
+    };
+    window.updateSh = (i, k, v) => {
+      shareholders[i][k] = k === 'percent' ? parseFloat(v) || 0 : v;
+      if (k === 'percent') window.calculate();
+      else window.saveData();
+    };
+    window.addShareholder = () => {
+      shareholders.push({
+        name: 'New',
+        percent: 0,
+        adjustments: []
+      });
+      renderAll();
+      window.saveData();
+    };
+    window.removeSh = (i) => {
+      if (confirm('刪除此股東?')) {
+        shareholders.splice(i, 1);
+        renderAll();
+        window.saveData();
+      }
+    };
+    window.addAdj = (si) => {
+      if (!shareholders[si].adjustments) shareholders[si].adjustments = [];
+      shareholders[si].adjustments.push({
+        item: '',
+        amount: ''
+      });
+      renderShareholders();
+      window.saveData();
+    };
+    window.removeAdj = (si, ai) => {
+      shareholders[si].adjustments.splice(ai, 1);
+      renderShareholders();
+      window.calculate();
+    };
+    window.updateAdj = (si, ai, k, v) => {
+      shareholders[si].adjustments[ai][k] = v;
+      if (k === 'amount') window.calculate();
+      else window.saveData();
+    };
+    window.resetCloudData = function() {
+      if (confirm('警告：這將清空所有雲端資料！確定嗎？')) {
+        shareholders = defaultData.shareholders;
+        expenses = defaultData.expenses;
+        income = defaultData.income;
+        document.getElementById('date-range').value = "";
+        saveDataToCloud();
+        renderAll();
+      }
+    }
+    window.downloadReport = function() {
+      const btnText = document.getElementById('btn-text');
+      btnText.innerText = "處理中...";
+      const originalNode = document.getElementById('report-card');
+      const cloneNode = originalNode.cloneNode(true);
+      cloneNode.style.width = "1000px";
+      cloneNode.style.position = "absolute";
+      cloneNode.style.top = "-9999px";
+      cloneNode.style.left = "-9999px";
+      cloneNode.style.zIndex = "-1";
+      document.body.appendChild(cloneNode);
+      const inputs = cloneNode.querySelectorAll('input');
+      inputs.forEach(input => {
+        const val = input.value;
+        const span = document.createElement('span');
+        span.innerText = val;
+        span.className = input.className + " print-text";
+        span.style.border = "none";
+        span.style.background = "transparent";
+        span.style.width = "auto";
+        if (input.parentElement) input.parentElement.replaceChild(span, input);
+      });
+      const noExports = cloneNode.querySelectorAll('.no-export');
+      noExports.forEach(el => el.remove());
+      html2canvas(cloneNode, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        width: 1000,
+        windowWidth: 1000,
+        useCORS: true
+      }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `結算表_${document.getElementById('date-range').value || 'Report'}.jpg`;
+        link.href = canvas.toDataURL("image/jpeg", 0.95);
+        link.click();
+        document.body.removeChild(cloneNode);
+        btnText.innerText = "📸 下載 JPG 報表";
+      }).catch(err => {
+        console.error(err);
+        document.body.removeChild(cloneNode);
+        btnText.innerText = "📸 下載 JPG 報表";
+      });
+    }
+  </script>
 </body>
+
 </html>
