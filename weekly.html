@@ -3,31 +3,269 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>週結業績 (雲端版)</title>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <title>📊 業績計算系統 (帳號標準化版)</title>
     <style>
-        body { font-family: "Microsoft JhengHei", sans-serif; background: #f0f2f6; padding: 20px; }
-        .box { background: white; padding: 20px; border-radius: 10px; max-width: 800px; margin: 0 auto; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        textarea { width: 100%; height: 200px; padding: 10px; border: 1px solid #ccc; font-size: 16px; border-radius: 5px; box-sizing: border-box;}
-        h1 { text-align: center; color: #333; }
-        .status { text-align: right; color: green; font-weight: bold; font-size: 14px; height: 20px; }
-        .btn { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; width: 100%; margin-top: 10px; }
-        .report { margin-top: 20px; white-space: pre-wrap; background: #fff; padding: 20px; border-radius: 10px; display: none; }
+        /* --- 基礎樣式 --- */
+        body { font-family: "Microsoft JhengHei", sans-serif; background-color: #f0f2f6; margin: 0; padding: 20px; }
+        h1, h2, h3 { color: #333; text-align: center; }
+        
+        /* --- 版面配置 --- */
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 800px;
+            margin: 0 auto 20px auto;
+        }
+        .mode-badge {
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .mode-local { background-color: #e2e3e5; color: #383d41; }
+        .mode-cloud { background-color: #d4edda; color: #155724; }
+
+        .settings-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 5px;
+        }
+        .settings-btn:hover { transform: rotate(45deg); transition: 0.3s; }
+
+        /* --- 輸入區塊 --- */
+        .input-section { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); max-width: 800px; margin: 0 auto 30px auto; position: relative; }
+        .status-indicator { position: absolute; top: 20px; right: 20px; font-size: 12px; color: #28a745; display: none; }
+        textarea { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; box-sizing: border-box; line-height: 1.5; font-family: inherit; }
+        input[type="text"] { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; box-sizing: border-box; }
+        
+        /* --- 按鈕 --- */
+        .btn-group { display: flex; gap: 10px; }
+        button { border: none; padding: 12px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: background 0.2s; color: white;}
+        .btn-calc { background-color: #007bff; flex: 2; }
+        .btn-calc:hover { background-color: #0056b3; }
+        .btn-clear { background-color: #dc3545; flex: 1; }
+        .btn-clear:hover { background-color: #a71d2a; }
+        .btn-action { background-color: #17a2b8; }
+        .btn-ai { background-color: #f39c12; }
+        .btn-save { background-color: #28a745; width: 100%; margin-top: 10px; }
+        .btn-copy-bill {
+            background-color: #6610f2;
+            width: 100%;
+            margin-top: 10px;
+            font-size: 14px;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+        .btn-copy-bill:hover { background-color: #520dc2; }
+
+        /* --- AI 與 日期 --- */
+        .ocr-section { margin-top: 20px; padding-top: 15px; border-top: 1px dashed #ccc; display: flex; flex-direction: column; gap: 10px; }
+        .date-input-group { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
+        #analysisDate { padding: 8px; border: 1px solid #ccc; border-radius: 5px; width: 150px; }
+        #analysisStatus { margin-top: 5px; font-size: 0.9em; color: #333; min-height: 1.2em; }
+
+        /* --- 報表與帳戶列表 --- */
+        .report-container { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
+        .person-card { background: white; border: 1px solid #ddd; width: 350px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); position: relative; }
+        .card-header { background-color: #ffcc00; padding: 10px; font-weight: bold; border-bottom: 1px solid #ccc; text-align: center; font-size: 18px; }
+        .card-body { padding: 10px; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+        .col-day { background-color: #fff8e1; width: 40px; font-weight: bold; }
+        .col-data { background-color: #f8f8ff; text-align: left; padding-left: 15px; }
+        .col-subtotal { background-color: #f0f0ff; width: 50px; }
+        .total-cell { background-color: #c0392b; color: white; font-weight: bold; text-align: center; font-size: 18px; }
+        
+        .summary-section { max-width: 300px; margin: 40px auto; background: white; padding: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .summary-table th { background-color: #fff8e1; }
+        .summary-table td { background-color: #f5f5f5; }
+        .summary-total-row td { background-color: #e0e0e0; font-weight: bold; color: #c0392b; }
+
+        /* --- 帳戶清單樣式 --- */
+        .account-reference-container { display: flex; flex-direction: column; max-width: 800px; margin: 0 auto; gap: 20px; }
+        .bank-category { padding: 15px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .bank-category h3 { color: #17a2b8; border-bottom: 2px solid #17a2b8; padding-bottom: 5px; margin-top: 0; text-align: left; }
+        .account-table th { background-color: #e0f7fa; font-weight: bold; }
+
+        /* --- 設定視窗 (Modal) --- */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 90%; max-width: 600px; border-radius: 10px; }
+        .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .close:hover { color: black; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group textarea { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        .hint { font-size: 0.85em; color: #666; margin-top: 3px; }
+
+        /* --- 衝突解決視窗 --- */
+        .conflict-item { border: 1px solid #ffc107; background: #fff3cd; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
+        .conflict-options { display: flex; gap: 5px; margin-top: 5px; }
+        .conflict-options button { padding: 5px 10px; font-size: 14px; flex: 1; }
+
+        /* --- Toast 通知 --- */
+        #toast {
+            visibility: hidden;
+            min-width: 250px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 2px;
+            padding: 16px;
+            position: fixed;
+            z-index: 1001;
+            left: 50%;
+            bottom: 30px;
+            transform: translateX(-50%);
+            font-size: 17px;
+        }
+        #toast.show { visibility: visible; -webkit-animation: fadein 0.5s, fadeout 0.5s 2.5s; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
+        @-webkit-keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
+        @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
+        @-webkit-keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
+        @keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
     </style>
 </head>
 <body>
 
-    <h1>📊 週結業績計算 (同步中)</h1>
-    <div class="box">
-        <div id="status" class="status">連線中...</div>
-        <textarea id="inputData" placeholder="請在此貼上數據..."></textarea>
-        <button class="btn" onclick="calc()">🚀 計算報表</button>
+    <div class="header-bar">
+        <span id="systemModeBadge" class="mode-badge mode-local">📡 單機模式 (資料存在本地)</span>
+        <button class="settings-btn" id="openSettingsBtn" title="系統設定">⚙️</button>
     </div>
-    <div id="report" class="report box"></div>
 
-    <script>
-        const firebaseConfig = {
+    <h1>📊 業績計算系統 (帳號標準化版)</h1>
+
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>⚙️ 系統設定</h2>
+            <p>請在此輸入您的金鑰以啟用雲端功能。若留空，系統將以「單機模式」運作。</p>
+            
+            <div class="form-group">
+                <label>Gemini API Key (用於圖片識別)</label>
+                <input type="password" id="cfgApiKey" placeholder="貼上您的 API Key">
+                <div class="hint">申請網址: https://aistudio.google.com/</div>
+            </div>
+
+            <div class="form-group">
+                <label>Firebase Config (用於雲端同步)</label>
+                <textarea id="cfgFirebase" rows="6" placeholder='{"apiKey": "...", "authDomain": "...", ...}'></textarea>
+                <div class="hint">請直接貼上 Firebase Console 提供的完整 JSON Config</div>
+            </div>
+
+            <button class="btn-save" id="saveSettingsBtn">💾 儲存並重新載入</button>
+        </div>
+    </div>
+
+    <div id="conflictModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color: #d39e00;">⚠️ 發現帳戶名稱重複</h2>
+            <p>系統檢測到以下名稱有重複資料，請選擇您要保留的資料：</p>
+            <div id="conflictList"></div>
+            <button class="btn-clear" onclick="document.getElementById('conflictModal').style.display='none'" style="margin-top:20px; background:#6c757d;">取消更新</button>
+        </div>
+    </div>
+
+    <div class="input-section">
+        <span id="saveStatus" class="status-indicator">✅ 已儲存</span>
+        <h3>📝 業績資料貼上區</h3>
+        <p style="color: #666; font-size: 0.9em; margin-top:-10px;">
+            格式範例：11/17 姚貴13 花田6 冠希5
+        </p>
+        <textarea id="inputData" rows="6" style="height: 120px;"></textarea>
+        
+        <div class="btn-group">
+            <button class="btn-calc" id="calculateButton">🔄 重新計算報表</button>
+            <button class="btn-clear" id="clearButton">🗑️ 清空資料</button>
+        </div>
+        
+        <div class="ocr-section">
+            <h4>📷 截圖分析與輸入 (AI 輔助)</h4>
+            <div class="date-input-group">
+                <label for="analysisDate">請填入日期 (M/D):</label>
+                <input type="text" id="analysisDate" placeholder="例如: 11/24">
+            </div>
+            <input type="file" id="imageUpload" accept="image/*">
+            <div class="ocr-button-group">
+                <button class="btn-ai" id="analyzeButton" style="width: 100%; padding: 10px; color:white; border:none; border-radius:5px; cursor:pointer;">🤖 分析截圖並匯入</button>
+            </div>
+            <div id="analysisStatus"></div>
+        </div>
+    </div>
+
+    <div class="input-section" style="border-top: 5px solid #6610f2;">
+        <h3>⚙️ 對帳單內容設定</h3>
+        <div class="form-group">
+            <label>對帳單日期區間 (將顯示在對帳單標題)：</label>
+            <input type="text" id="billDateRangeInput" placeholder="例如: 11/24 - 11/24">
+        </div>
+        <div class="form-group">
+            <label>警語與注意事項 (可自由編輯)：</label>
+            <textarea id="billWarningTemplate" rows="8">🚨 請務必核對以下重要資訊
+
+* 總金額： 請核實最上方您名字後面的總金額。
+* 預計入款： 預計於（週一）**存入，屆時將一併附上水單（小白）。
+* 帳號變更通知： 如有任何帳號需更改，請務必在今日中午前告知。
+* 風險聲明： 匯錯不補，請仔細確認。</textarea>
+        </div>
+        <button class="btn-action" id="saveBillConfigBtn" style="width: 100%;">💾 暫存設定 (重新整理後生效)</button>
+    </div>
+
+    <h2 id="reportTitle" style="display:none;">個人週報表 (含對帳單)</h2>
+    <div id="individualReports" class="report-container"></div>
+
+    <h2 id="summaryTitle" style="display:none;">每日合計總表</h2>
+    <div id="summarySection" class="summary-section" style="display:none;">
+        <table class="summary-table">
+            <thead>
+                <tr>
+                    <th>星期</th>
+                    <th>合計</th>
+                </tr>
+            </thead>
+            <tbody id="summaryBody"></tbody>
+        </table>
+    </div>
+
+    <div class="input-section" style="margin-top: 40px;">
+        <span id="accountStatus" class="status-indicator" style="right: 20px; color: #17a2b8;">✅ 帳戶清單已更新</span>
+        <h3>🏦 銀行帳戶清單管理</h3>
+        <p style="color: #666; font-size: 0.9em; margin-top:-10px;">
+            更新時系統會自動將帳號標準化為 XXXX-XXXX-XXXX 格式。
+            <br><b>Tips:</b> 可直接貼上 `名稱 銀行 123456789012` 或 `名稱 銀行 123 456 789`。
+        </p>
+        <textarea id="accountInputData" rows="6" placeholder="貼上您的帳戶清單文字..."></textarea>
+        <div class="btn-group">
+            <button class="btn-action" id="uploadAccountListButton">⬆️ 更新與整理帳戶清單</button>
+            <button class="btn-clear" id="clearAccountListButton">🗑️ 清空</button>
+        </div>
+    </div>
+    
+    <h2 id="referenceTitle" style="display:none;">銀行帳戶參考清單</h2>
+    <div id="accountReferenceList" class="account-reference-container"></div>
+
+    <div id="toast">已複製到剪貼簿</div>
+
+    <script type="module">
+        // [FIX] 使用穩定的 Firebase 版本
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+
+        // --- 全域變數 ---
+        let db = null;
+        let auth = null;
+        let isCloudMode = false;
+        let geminiApiKey = '';
+        
+        // [FIX] 預設 Firebase 設定 (直接整合提供的 Config)
+        const DEFAULT_FIREBASE_CONFIG = {
             apiKey: "AIzaSyDsUsWuynci0DP71veuu19Ht8bJmhHSkHs",
             authDomain: "worktools-f53e5.firebaseapp.com",
             databaseURL: "https://worktools-f53e5-default-rtdb.firebaseio.com",
@@ -37,44 +275,626 @@
             appId: "1:950551082090:web:3c2c4962b5ffa044aec613",
             measurementId: "G-EKPY3SC0BR"
         };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
-        const textArea = document.getElementById('inputData');
-        const statusDiv = document.getElementById('status');
+        
+        // 常數設定
+        const STORAGE_KEY_SETTINGS = 'weekly_app_settings';
+        const STORAGE_KEY_LOCAL_DATA = 'weekly_local_sales_data';
+        const STORAGE_KEY_LOCAL_ACC = 'weekly_local_account_data';
+        const STORAGE_KEY_BILL_CONFIG = 'weekly_bill_config';
+        
+        const DAY_MAP = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 0: '日' };
+        const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+        
+        const COLLECTION_NAME = 'salesData';
+        const DATA_DOC_ID = 'weeklyInput'; 
+        const ACCOUNT_COLLECTION_NAME = 'accountData';
+        const ACCOUNT_DOC_ID = 'accountList';
+        const DEFAULT_APP_ID = 'universal-app'; 
 
-        // 監聽雲端
-        db.ref('weekly_data').on('value', snap => {
-            const val = snap.val();
-            if(val && val !== textArea.value) {
-                textArea.value = val;
-                statusDiv.innerText = "✅ 資料已同步更新";
-            }
-        });
+        const BANK_KEYWORDS = {
+            "國泰": "🏦 國泰世華銀行 (Cathay United Bank)",
+            "世華": "🏦 國泰世華銀行 (Cathay United Bank)",
+            "台新": "💳 台新銀行 (Taishin Bank)",
+            "中國信託": "🇨🇹 中國信託商業銀行 (CTBC Bank)",
+            "中信": "🇨🇹 中國信託商業銀行 (CTBC Bank)",
+            "玉山": "⛰️ 玉山銀行 (E.SUN Bank)",
+            "富邦": "💳 台北富邦銀行 (Taipei Fubon Bank)",
+            "永豐": "🏛️ 其他銀行",
+            "元大": "🏛️ 其他銀行"
+        };
+        const DEFAULT_BANK_CATEGORY = "🏛️ 其他銀行";
 
-        // 上傳 (防手抖，延遲 0.5 秒上傳)
-        let timer;
-        textArea.addEventListener('input', () => {
-            statusDiv.innerText = "☁️ 輸入中...";
-            clearTimeout(timer);
-            timer = setTimeout(() => {
-                db.ref('weekly_data').set(textArea.value).then(() => {
-                    statusDiv.innerText = "✅ 已儲存到雲端";
-                });
-            }, 500);
-        });
+        // --- DOM 元素 ---
+        const $inputData = document.getElementById('inputData');
+        const $accountInputData = document.getElementById('accountInputData');
+        const $modeBadge = document.getElementById('systemModeBadge');
+        const $toast = document.getElementById("toast");
+        
+        const $billDateRangeInput = document.getElementById('billDateRangeInput');
+        const $billWarningTemplate = document.getElementById('billWarningTemplate');
+        
+        const $conflictModal = document.getElementById('conflictModal');
+        const $conflictList = document.getElementById('conflictList');
 
-        // 簡單計算邏輯 (保留你原本的需求)
-        function calc() {
-            const lines = textArea.value.split('\n');
-            let output = "--- 計算結果 ---\n";
-            // 這裡僅示範邏輯，可擴充你原本的複雜計算
-            lines.forEach(line => {
-                if(line.trim()) output += line + " (已記錄)\n";
-            });
-            const rep = document.getElementById('report');
-            rep.style.display = 'block';
-            rep.innerText = "計算完成！資料已在雲端安全儲存。\n\n" + output;
+        // --- 1. 系統初始化邏輯 ---
+        function loadSettings() {
+            return JSON.parse(localStorage.getItem(STORAGE_KEY_SETTINGS) || '{}');
         }
+
+        async function initSystem() {
+            const settings = loadSettings();
+            geminiApiKey = settings.apiKey || '';
+
+            const billConfig = JSON.parse(localStorage.getItem(STORAGE_KEY_BILL_CONFIG) || '{}');
+            if (billConfig.dateRange) $billDateRangeInput.value = billConfig.dateRange;
+            if (billConfig.warning) $billWarningTemplate.value = billConfig.warning;
+
+            // [FIX] 優先使用設定中的 Config，若無則使用預設的 Config
+            let configToUse = null;
+            if (settings.firebaseConfig) {
+                try {
+                    configToUse = JSON.parse(settings.firebaseConfig);
+                } catch(e) { console.error("設定檔 JSON 解析錯誤", e); }
+            } else {
+                configToUse = DEFAULT_FIREBASE_CONFIG;
+            }
+
+            if (configToUse) {
+                try {
+                    // 檢查是否已初始化，避免重複初始化
+                    const app = initializeApp(configToUse);
+                    auth = getAuth(app);
+                    db = getFirestore(app);
+                    await signInAnonymously(auth);
+                    isCloudMode = true;
+                    updateModeUI(true);
+                    listenCloudSales();
+                    listenCloudAccounts();
+                    return;
+                } catch (e) {
+                    console.error("雲端初始化失敗，切換回單機模式:", e);
+                    // 只有在真的連線失敗時才彈出警告
+                    if(e.code !== 'app/duplicate-app') {
+                        alert("Firebase 連線失敗，已切換回單機模式。");
+                    }
+                }
+            }
+
+            isCloudMode = false;
+            updateModeUI(false);
+            loadLocalData();
+        }
+
+        function updateModeUI(isCloud) {
+            if (isCloud) {
+                $modeBadge.textContent = "☁️ 雲端同步模式 (已連線)";
+                $modeBadge.className = "mode-badge mode-cloud";
+            } else {
+                $modeBadge.textContent = "💻 單機模式 (資料存於瀏覽器)";
+                $modeBadge.className = "mode-badge mode-local";
+            }
+        }
+
+        // --- 2. 資料存取邏輯 ---
+
+        async function saveSalesData(text) {
+            if (isCloudMode && db) {
+                try {
+                    const docRef = doc(db, `artifacts/${DEFAULT_APP_ID}/public/data/${COLLECTION_NAME}/${DATA_DOC_ID}`);
+                    await setDoc(docRef, { dataString: text, timestamp: Date.now() });
+                    showStatus('saveStatus');
+                } catch(e) { console.error(e); }
+            } else {
+                localStorage.setItem(STORAGE_KEY_LOCAL_DATA, text);
+                showStatus('saveStatus');
+            }
+        }
+
+        // [FIX] 新增 saveAccountData 函式，用於處理清空或純文字儲存
+        async function saveAccountData(text) {
+            // 如果傳入空字串，代表清空，我們傳入空物件給 commitAccountData
+            if (!text) {
+                await commitAccountData({}, '');
+            } else {
+                // 如果是手動修改文字但未按「整理」，暫時只存文字 (這裡選擇直接當作更新觸發)
+                $accountInputData.value = text;
+                const emptyStruct = {};
+                await commitAccountData(emptyStruct, text);
+            }
+        }
+
+        async function commitAccountData(structured, rawText) {
+            // 如果 rawText 未提供，則根據 structured 產生
+            const formattedText = rawText !== undefined ? rawText : generateFormattedText(structured);
+            $accountInputData.value = formattedText; 
+            
+            if (isCloudMode && db) {
+                try {
+                    const docRef = doc(db, `artifacts/${DEFAULT_APP_ID}/public/data/${ACCOUNT_COLLECTION_NAME}/${ACCOUNT_DOC_ID}`);
+                    await setDoc(docRef, { accounts: structured, rawText: formattedText, timestamp: Date.now() });
+                    showStatus('accountStatus');
+                } catch(e) { console.error(e); }
+            } else {
+                localStorage.setItem(STORAGE_KEY_LOCAL_ACC, JSON.stringify({ accounts: structured, rawText: formattedText }));
+                showStatus('accountStatus');
+                renderAccountList(structured);
+            }
+            $conflictModal.style.display = 'none'; 
+        }
+        
+        function saveBillConfig() {
+            const config = {
+                dateRange: $billDateRangeInput.value,
+                warning: $billWarningTemplate.value
+            };
+            localStorage.setItem(STORAGE_KEY_BILL_CONFIG, JSON.stringify(config));
+            generateReport(); 
+            alert("對帳單設定已更新！");
+        }
+
+        function loadLocalData() {
+            const sales = localStorage.getItem(STORAGE_KEY_LOCAL_DATA);
+            if (sales) {
+                $inputData.value = sales;
+                generateReport();
+            }
+            const accData = JSON.parse(localStorage.getItem(STORAGE_KEY_LOCAL_ACC) || '{}');
+            if (accData.rawText) $accountInputData.value = accData.rawText;
+            if (accData.accounts) renderAccountList(accData.accounts);
+        }
+
+        function listenCloudSales() {
+            const docRef = doc(db, `artifacts/${DEFAULT_APP_ID}/public/data/${COLLECTION_NAME}/${DATA_DOC_ID}`);
+            onSnapshot(docRef, (snap) => {
+                if (snap.exists()) {
+                    const val = snap.data().dataString || '';
+                    if ($inputData.value !== val) {
+                        $inputData.value = val;
+                        generateReport();
+                    }
+                }
+            });
+        }
+        function listenCloudAccounts() {
+            const docRef = doc(db, `artifacts/${DEFAULT_APP_ID}/public/data/${ACCOUNT_COLLECTION_NAME}/${ACCOUNT_DOC_ID}`);
+            onSnapshot(docRef, (snap) => {
+                if (snap.exists()) {
+                    const data = snap.data();
+                    if ($accountInputData.value !== data.rawText) $accountInputData.value = data.rawText || '';
+                    renderAccountList(data.accounts);
+                }
+            });
+        }
+
+        // --- 3. 智慧帳戶整理邏輯 ---
+
+        function handleAccountUpdate() {
+            const rawText = $accountInputData.value;
+            const rawList = parseAccountListToFlat(rawText);
+            const duplicates = findDuplicates(rawList);
+            
+            if (duplicates.length > 0) {
+                showConflictModal(duplicates, rawList);
+            } else {
+                const structured = reorganizeAccounts(rawList);
+                commitAccountData(structured); // 不需要傳 rawText，會自動生成
+            }
+        }
+
+        function parseAccountListToFlat(text) {
+            const lines = text.split('\n');
+            const flatList = [];
+            
+            const ignoreKeywords = ["總金額", "預計入款", "帳號變更通知", "風險聲明", "每週對帳單"];
+            const ignoreStarters = ["*", "🚨", "💰", "⚠️", "#"];
+
+            lines.forEach(line => {
+                const trim = line.trim();
+                if (!trim) return;
+                
+                if (ignoreKeywords.some(kw => trim.includes(kw))) return;
+                if (ignoreStarters.some(st => trim.startsWith(st))) return;
+                if (trim.match(/^[🇨🇹💰🏦⛰️💳]\s*(.+)/)) return;
+                if (trim.includes('名稱') && trim.includes('銀行帳號')) return;
+
+                const parts = trim.split(/\s+|\t/).filter(p => p.length > 0);
+                
+                if (parts.length >= 2) {
+                    const name = parts[0];
+                    let accountParts = [];
+                    let remainingParts = parts.slice(1);
+                    
+                    let i = remainingParts.length - 1;
+                    while (i >= 0) {
+                        const part = remainingParts[i];
+                        if (/^[\d-]+$/.test(part)) {
+                            accountParts.unshift(part); 
+                            remainingParts.pop(); 
+                        } else {
+                            break; 
+                        }
+                        i--;
+                    }
+                    
+                    let rawAccountStr = "";
+                    let bankName = "";
+                    
+                    if (accountParts.length > 0) {
+                        rawAccountStr = accountParts.join(''); 
+                        bankName = remainingParts.join(' ') || "未指定銀行";
+                    } else {
+                        rawAccountStr = parts[parts.length - 1];
+                        bankName = parts.slice(1, parts.length - 1).join(' ') || "未指定銀行";
+                    }
+
+                    const cleanAccount = rawAccountStr.replace(/\D/g, ''); 
+                    const formattedAccount = cleanAccount.match(/.{1,4}/g)?.join('-') || rawAccountStr;
+
+                    flatList.push({ name, bankName, account: formattedAccount });
+                }
+            });
+            return flatList;
+        }
+
+        function findDuplicates(flatList) {
+            const nameMap = {};
+            const duplicates = [];
+            
+            flatList.forEach(item => {
+                if (!nameMap[item.name]) {
+                    nameMap[item.name] = [];
+                }
+                nameMap[item.name].push(item);
+            });
+
+            for (const name in nameMap) {
+                if (nameMap[name].length > 1) {
+                    const uniqueItems = nameMap[name].filter((v,i,a)=>a.findIndex(t=>(t.account===v.account && t.bankName===v.bankName))===i);
+                    if (uniqueItems.length > 1) {
+                        duplicates.push({ name: name, items: uniqueItems });
+                    }
+                }
+            }
+            return duplicates;
+        }
+
+        function reorganizeAccounts(flatList) {
+            const structured = {};
+            
+            const orderedCategories = [
+                "🏦 國泰世華銀行 (Cathay United Bank)",
+                "💳 台新銀行 (Taishin Bank)",
+                "🇨🇹 中國信託商業銀行 (CTBC Bank)",
+                "⛰️ 玉山銀行 (E.SUN Bank)",
+                "💳 台北富邦銀行 (Taipei Fubon Bank)",
+                "🏛️ 其他銀行"
+            ];
+            orderedCategories.forEach(c => structured[c] = []);
+
+            flatList.forEach(item => {
+                let category = DEFAULT_BANK_CATEGORY;
+                for (const key in BANK_KEYWORDS) {
+                    if (item.bankName.includes(key)) {
+                        category = BANK_KEYWORDS[key];
+                        break;
+                    }
+                }
+                if (!structured[category]) structured[category] = [];
+                structured[category].push(item);
+            });
+
+            for (const cat in structured) {
+                if (structured[cat].length === 0) delete structured[cat];
+            }
+            return structured;
+        }
+
+        function generateFormattedText(structured) {
+            let text = "💰 終極核對版：每週對帳單\n\n";
+            text += document.getElementById('billWarningTemplate').value + "\n\n";
+
+            for (const cat in structured) {
+                text += `\n${cat}\n\n名稱\t銀行名稱\t銀行帳號\n`;
+                structured[cat].forEach(item => {
+                    text += `${item.name}\t${item.bankName}\t${item.account}\n`;
+                });
+            }
+            return text;
+        }
+
+        function showConflictModal(duplicates, fullFlatList) {
+            $conflictList.innerHTML = '';
+            
+            duplicates.forEach((dup, index) => {
+                const div = document.createElement('div');
+                div.className = 'conflict-item';
+                div.innerHTML = `<strong>名稱衝突：${dup.name}</strong><br>`;
+                
+                dup.items.forEach((item, i) => {
+                    div.innerHTML += `
+                        <label>
+                            <input type="radio" name="dup_${index}" value="${i}" ${i===0?'checked':''}> 
+                            ${item.bankName} - ${item.account}
+                        </label><br>
+                    `;
+                });
+                
+                const btnGroup = document.createElement('div');
+                btnGroup.className = 'conflict-options';
+                
+                const btnKeep = document.createElement('button');
+                btnKeep.textContent = "保留選取項";
+                btnKeep.className = 'btn-action';
+                btnKeep.onclick = () => resolveConflict(dup.name, dup.items, index, 'selected', fullFlatList);
+
+                const btnBoth = document.createElement('button');
+                btnBoth.textContent = "全部保留";
+                btnBoth.className = 'btn-ai';
+                btnBoth.onclick = () => resolveConflict(dup.name, dup.items, index, 'all', fullFlatList);
+
+                btnGroup.appendChild(btnKeep);
+                btnGroup.appendChild(btnBoth);
+                div.appendChild(btnGroup);
+                
+                $conflictList.appendChild(div);
+            });
+            
+            $conflictModal.style.display = 'block';
+        }
+
+        function resolveConflict(name, items, dupIndex, method, fullFlatList) {
+            let newList = fullFlatList.filter(item => item.name !== name);
+            
+            if (method === 'selected') {
+                const radios = document.getElementsByName(`dup_${dupIndex}`);
+                let selectedIndex = 0;
+                radios.forEach(r => { if(r.checked) selectedIndex = parseInt(r.value); });
+                newList.push(items[selectedIndex]);
+            } else if (method === 'all') {
+                items.forEach(item => newList.push(item));
+            }
+
+            const structured = reorganizeAccounts(newList);
+            commitAccountData(structured); 
+        }
+
+        // --- 4. 核心業務邏輯 ---
+        
+        function parseAndCalculate(input) {
+            const lines = input.split('\n');
+            const currentYear = new Date().getFullYear();
+            const personData = {}; 
+            const dailyGrandTotals = Object.fromEntries(DAY_ORDER.map(i => [i, 0]));
+            let grandTotalAll = 0;
+            let hasData = false;
+
+            lines.forEach(line => {
+                const parts = line.trim().split(/\s+/).filter(p => p.length > 0);
+                if (parts.length < 2) return;
+                const dateStr = parts[0];
+                try {
+                    const dateObj = new Date(`${currentYear}/${dateStr}`);
+                    if (isNaN(dateObj.getTime())) return;
+                    
+                    const dayIndex = dateObj.getDay(); 
+                    
+                    for (let i = 1; i < parts.length; i++) {
+                        const token = parts[i];
+                        const match = token.match(/^([^\d]+)([\d\.]+)$/);
+                        if (match) {
+                            const name = match[1];
+                            const val = parseFloat(match[2]);
+                            if (!personData[name]) personData[name] = Object.fromEntries(DAY_ORDER.map(i => [i, []]));
+                            personData[name][dayIndex].push(val);
+                            dailyGrandTotals[dayIndex] += val;
+                            grandTotalAll += val;
+                            hasData = true;
+                        }
+                    }
+                } catch (e) { console.error(e); }
+            });
+
+            return { personData, dailyGrandTotals, grandTotalAll, hasData };
+        }
+
+        function getAccountInfo(name) {
+            const accText = $accountInputData.value;
+            const flat = parseAccountListToFlat(accText);
+            
+            const cleanName = name.trim().toLowerCase();
+            return flat.find(acc => {
+                const accName = acc.name.trim().toLowerCase();
+                return accName === cleanName || accName.includes(cleanName) || cleanName.includes(accName);
+            });
+        }
+
+        function generateReport() {
+            const input = $inputData.value.trim();
+            const $ir = document.getElementById('individualReports');
+            const $ss = document.getElementById('summarySection');
+            
+            $ir.innerHTML = '';
+            $ss.style.display = 'none';
+            document.getElementById('reportTitle').style.display = 'none';
+            document.getElementById('summaryTitle').style.display = 'none';
+
+            if (input.length === 0) return;
+
+            const { personData, dailyGrandTotals, grandTotalAll, hasData } = parseAndCalculate(input);
+
+            if (hasData) {
+                document.getElementById('reportTitle').style.display = 'block';
+                document.getElementById('summaryTitle').style.display = 'block';
+                
+                const billDateRange = $billDateRangeInput.value.trim() || "(日期未定)";
+                const billWarning = $billWarningTemplate.value;
+                
+                Object.keys(personData).forEach(name => {
+                    let html = `<div class="person-card"><div class="card-header">${name}</div><div class="card-body"><table>`;
+                    let total = 0;
+                    DAY_ORDER.forEach(day => {
+                        const vals = personData[name][day];
+                        const sub = vals.reduce((a,b)=>a+b,0);
+                        total += sub;
+                        html += `<tr><td class="col-day">${DAY_MAP[day]}</td><td class="col-data">${vals.join(', ')}</td><td class="col-subtotal">${sub||''}</td></tr>`;
+                    });
+                    html += `<tr><td colspan="2"></td><td class="total-cell">${total}</td></tr></table>`;
+                    
+                    const accInfo = getAccountInfo(name);
+                    const amountDue = total * 100;
+                    const bankName = accInfo ? accInfo.bankName : "尚未設定銀行";
+                    const bankAcc = accInfo ? accInfo.account : "請在下方清單更新";
+                    
+                    const billText = `每週對帳單 (${billDateRange})
+
+${name} ${bankName} ${bankAcc} 金額=${amountDue}
+
+${billWarning}`;
+                    const encodedBillText = encodeURIComponent(billText);
+
+                    html += `
+                        <button class="btn-copy-bill" onclick="copyBill('${encodedBillText}')">
+                            📋 複製對帳資訊
+                        </button>
+                    </div></div>`;
+                    $ir.innerHTML += html;
+                });
+
+                let sumHtml = '';
+                DAY_ORDER.forEach(day => sumHtml += `<tr><td>${DAY_MAP[day]}</td><td>${dailyGrandTotals[day]}</td></tr>`);
+                sumHtml += `<tr class="summary-total-row"><td>總合計</td><td>${grandTotalAll}</td></tr>`;
+                document.getElementById('summaryBody').innerHTML = sumHtml;
+                $ss.style.display = 'block';
+            }
+        }
+
+        function renderAccountList(accounts) {
+            const $list = document.getElementById('accountReferenceList');
+            $list.innerHTML = '';
+            document.getElementById('referenceTitle').style.display = 'none';
+            if (!accounts || Object.keys(accounts).length === 0) return;
+            
+            document.getElementById('referenceTitle').style.display = 'block';
+            for (const cat in accounts) {
+                if (accounts[cat].length === 0) continue;
+                let rows = accounts[cat].map(i => `<tr><td>${i.name}</td><td>${i.bankName}</td><td>${i.account}</td></tr>`).join('');
+                $list.innerHTML += `<div class="bank-category"><h3>${cat}</h3><table class="account-table"><thead><tr><th>名稱</th><th>銀行名稱</th><th>銀行帳號</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+            }
+        }
+
+        // --- AI 邏輯 ---
+        async function analyzeImage() {
+            if (!geminiApiKey) {
+                const useSim = confirm("⚠️ 未偵測到 API Key，是否使用模擬模式？");
+                if (useSim) { simulateAIResponse(); return; }
+                return;
+            }
+            const file = document.getElementById('imageUpload').files[0];
+            const dateVal = document.getElementById('analysisDate').value.trim();
+            const $status = document.getElementById('analysisStatus');
+            const $btn = document.getElementById('analyzeButton');
+
+            if (!file) { $status.innerHTML = '<span style="color:red">請選擇圖片</span>'; return; }
+            if (!dateVal.match(/^\d{1,2}\/\d{1,2}$/)) { $status.innerHTML = '<span style="color:red">請輸入有效日期 (M/D)</span>'; return; }
+
+            $btn.disabled = true;
+            $status.innerHTML = '⏳ 分析中...';
+
+            try {
+                const base64Data = await new Promise(r => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => r(reader.result.split(',')[1]);
+                    reader.readAsDataURL(file);
+                });
+                const prompt = `請從圖片提取業績。指示：1.找人名旁的小數值(如5,6)。2.忽略大數值(如2800)。格式：M/D 姓名數值... 日期:${dateVal}。僅輸出純文字。`;
+                
+                // [FIX] 使用正確的 Gemini 模型名稱 (gemini-1.5-flash)
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: file.type, data: base64Data } }] }] })
+                });
+                const json = await res.json();
+                const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+                if (text) {
+                    let current = $inputData.value.trim();
+                    if (current) current += '\n';
+                    $inputData.value = current + text;
+                    saveSalesData($inputData.value);
+                    generateReport();
+                    $status.innerHTML = '<span style="color:green">✅ 匯入成功</span>';
+                } else { $status.innerHTML = '<span style="color:red">⚠️ 無法識別或 API 錯誤</span>'; console.log(json); }
+            } catch(e) { console.error(e); $status.innerHTML = '<span style="color:red">❌ 錯誤 (請檢查 Console)</span>'; } finally { $btn.disabled = false; }
+        }
+
+        function simulateAIResponse() {
+            const dateVal = document.getElementById('analysisDate').value.trim() || '11/24';
+            const $status = document.getElementById('analysisStatus');
+            $status.innerHTML = '⏳ 模擬 AI 分析中...';
+            setTimeout(() => {
+                let current = $inputData.value.trim();
+                if (current) current += '\n';
+                $inputData.value = current + `${dateVal} 權志龍5 雅典娜4 可可5 顏同6`;
+                saveSalesData($inputData.value);
+                generateReport();
+                $status.innerHTML = '<span style="color:green">✅ 模擬匯入成功</span>';
+            }, 1000);
+        }
+
+        // --- UI Events ---
+        window.copyBill = function(encodedText) {
+            const text = decodeURIComponent(encodedText);
+            const textarea = document.createElement("textarea");
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand("copy");
+            document.body.removeChild(textarea);
+            $toast.className = "show";
+            setTimeout(() => { $toast.className = $toast.className.replace("show", ""); }, 3000);
+        };
+
+        function showStatus(id) {
+            const el = document.getElementById(id);
+            if(el) {
+                el.style.display = 'block';
+                setTimeout(() => el.style.display = 'none', 2000);
+            }
+        }
+
+        const modal = document.getElementById('settingsModal');
+        document.getElementById('openSettingsBtn').onclick = () => {
+            const s = loadSettings();
+            document.getElementById('cfgApiKey').value = s.apiKey || '';
+            document.getElementById('cfgFirebase').value = s.firebaseConfig || '';
+            modal.style.display = "block";
+        };
+        document.getElementsByClassName('close')[0].onclick = () => modal.style.display = "none";
+        window.onclick = (e) => { if(e.target == modal) modal.style.display = "none"; if(e.target == $conflictModal) $conflictModal.style.display = "none"; }
+
+        document.getElementById('saveSettingsBtn').onclick = () => {
+            const newSettings = { apiKey: document.getElementById('cfgApiKey').value.trim(), firebaseConfig: document.getElementById('cfgFirebase').value.trim() };
+            localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(newSettings));
+            alert("設定已儲存！");
+            location.reload();
+        };
+
+        $inputData.addEventListener('input', () => { saveSalesData($inputData.value); generateReport(); });
+        document.getElementById('calculateButton').onclick = () => { generateReport(); saveSalesData($inputData.value); };
+        document.getElementById('clearButton').onclick = () => { if(confirm('確定清空?')) { $inputData.value = ''; saveSalesData(''); generateReport(); } };
+        
+        $accountInputData.addEventListener('input', () => { /* No auto save */ });
+        document.getElementById('uploadAccountListButton').onclick = handleAccountUpdate;
+        
+        // [FIX] 這裡使用了 saveAccountData，現在該函式已定義
+        document.getElementById('clearAccountListButton').onclick = () => { if(confirm('確定清空帳戶清單?')) { saveAccountData(''); } };
+        
+        document.getElementById('saveBillConfigBtn').onclick = saveBillConfig;
+        $billDateRangeInput.addEventListener('input', generateReport);
+        $billWarningTemplate.addEventListener('input', generateReport);
+        document.getElementById('analyzeButton').onclick = analyzeImage;
+
+        initSystem();
     </script>
 </body>
 </html>
