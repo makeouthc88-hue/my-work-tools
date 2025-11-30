@@ -3,9 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📊 業績計算系統 (全功能修復版)</title>
+    <title>📊 業績計算系統 (WorkTools 雲端版)</title>
+    
+    <!-- 1. 引入與 Shop 相同的 Firebase v8 SDK (最穩定) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
     <style>
-        /* --- 1. 基礎樣式 (保留原版風格) --- */
+        /* --- 基礎樣式 (保留您的設計) --- */
         body { font-family: "Microsoft JhengHei", sans-serif; background-color: #f0f2f6; margin: 0; padding: 20px; }
         h1, h2, h3 { color: #333; text-align: center; }
         
@@ -14,18 +20,19 @@
             display: flex; justify-content: space-between; align-items: center;
             max-width: 800px; margin: 0 auto 20px auto;
         }
-        .mode-badge { padding: 5px 10px; border-radius: 15px; font-size: 0.8em; font-weight: bold; }
-        .mode-local { background-color: #e2e3e5; color: #383d41; }
-        .mode-cloud { background-color: #d4edda; color: #155724; }
-        .settings-btn { background: none; border: none; font-size: 24px; cursor: pointer; padding: 5px; }
-        .settings-btn:hover { transform: rotate(45deg); transition: 0.3s; }
+        .mode-badge { padding: 5px 10px; border-radius: 15px; font-size: 0.8em; font-weight: bold; transition: background-color 0.3s; }
+        .mode-connecting { background-color: #ffeeba; color: #856404; }
+        .mode-connected { background-color: #d4edda; color: #155724; }
+        .mode-offline { background-color: #f8d7da; color: #721c24; }
+        
+        .settings-btn { display: none; } /* 雲端版隱藏設定 */
 
         /* --- 輸入區塊 --- */
         .input-section { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); max-width: 800px; margin: 0 auto 30px auto; position: relative; }
         .status-indicator { position: absolute; top: 20px; right: 20px; font-size: 12px; color: #28a745; display: none; }
         textarea, input[type="text"] { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; box-sizing: border-box; line-height: 1.5; }
         
-        /* --- 按鈕 (原版配色) --- */
+        /* --- 按鈕 --- */
         .btn-group { display: flex; gap: 10px; }
         button { border: none; padding: 12px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: background 0.2s; color: white;}
         .btn-calc { background-color: #007bff; flex: 2; }
@@ -41,11 +48,10 @@
         }
         .btn-copy-bill:hover { background-color: #520dc2; }
 
-        /* --- 報表與卡片 (找回黃色標題) --- */
+        /* --- 報表與卡片 --- */
         .report-container { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
         .person-card { background: white; border: 1px solid #ddd; width: 350px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); position: relative; transition: 0.3s;}
         
-        /* 缺帳號樣式 */
         .person-card.missing-account { border: 3px solid #dc3545; box-shadow: 0 0 10px rgba(220, 53, 69, 0.3); }
         .person-card.missing-account .card-header { background-color: #dc3545; color: white; }
         .missing-msg { color: #dc3545; font-weight: bold; text-align: center; margin-top: 5px; font-size: 0.9em; }
@@ -56,7 +62,7 @@
         /* 帳號編輯區樣式 */
         .account-display { margin-top: 10px; padding: 5px; border-top: 1px dashed #ccc; font-size: 0.9em; color: #555; display: flex; justify-content: space-between; align-items: center; }
         .edit-area { background: #f8f9fa; padding: 10px; border-radius: 5px; margin-top: 10px; border: 1px solid #dee2e6; }
-        .edit-area input { margin-bottom: 5px; font-size: 14px; padding: 5px; }
+        .edit-area input { margin-bottom: 5px; font-size: 14px; padding: 5px; width: 100%; box-sizing: border-box; }
         .btn-icon { background: none; border: none; color: #007bff; cursor: pointer; padding: 0 5px; font-size: 1.2em; }
         .btn-icon:hover { color: #0056b3; transform: scale(1.1); }
         .btn-sm-save { background-color: #28a745; padding: 5px 10px; font-size: 14px; width: 100%; margin-top: 5px; }
@@ -104,24 +110,12 @@
 <body>
 
     <div class="header-bar">
-        <span id="systemModeBadge" class="mode-badge mode-local">📡 單機模式</span>
-        <button class="settings-btn" id="openSettingsBtn" title="系統設定">⚙️</button>
+        <span id="systemModeBadge" class="mode-badge mode-connecting">📡 連線中...</span>
     </div>
 
-    <h1>📊 業績計算系統 (修復版)</h1>
+    <h1>📊 業績計算系統 (WorkTools)</h1>
 
-    <!-- 設定 Modal -->
-    <div id="settingsModal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <h2>⚙️ 雲端設定</h2>
-            <p>若需跨裝置同步，請設定 Firebase Config。</p>
-            <textarea id="cfgFirebase" rows="6" placeholder='{"apiKey": "...", ...}' style="width:100%"></textarea>
-            <button class="btn-save" id="saveSettingsBtn">💾 儲存並重新載入</button>
-        </div>
-    </div>
-
-    <!-- 衝突解決 Modal (這是你要的功能!) -->
+    <!-- 衝突解決 Modal -->
     <div id="conflictModal" class="modal">
         <div class="modal-content">
             <h2 style="color: #d39e00;">⚠️ 發現帳戶名稱重複</h2>
@@ -132,10 +126,10 @@
     </div>
 
     <div class="input-section">
-        <span id="saveStatus" class="status-indicator">✅ 已儲存</span>
+        <span id="saveStatus" class="status-indicator">✅ 雲端已同步</span>
         <h3>📝 業績資料貼上區</h3>
         <p style="color: #666; font-size: 0.9em; margin-top:-10px;">格式範例：11/17 姚貴13 花田6</p>
-        <textarea id="inputData" rows="8" style="height: 150px;"></textarea>
+        <textarea id="inputData" rows="8" style="height: 150px;" placeholder="正在從雲端讀取資料..."></textarea>
         
         <div class="btn-group">
             <button class="btn-calc" id="calculateButton">🔄 重新計算報表</button>
@@ -144,7 +138,7 @@
         </div>
     </div>
 
-    <!-- 對帳單設定 (保留你的樣式) -->
+    <!-- 對帳單設定 -->
     <div class="input-section" style="border-top: 5px solid #6610f2;">
         <h3>⚙️ 對帳單內容設定</h3>
         <div>
@@ -158,7 +152,7 @@
 * 預計入款： 週一存入。
 * 風險聲明： 匯錯不補，請仔細確認。</textarea>
         </div>
-        <button class="btn-action" id="saveBillConfigBtn">💾 儲存設定 (自動生效)</button>
+        <button class="btn-action" id="saveBillConfigBtn">💾 儲存設定 (同步所有裝置)</button>
     </div>
 
     <h2 id="reportTitle" style="display:none;">個人週報表</h2>
@@ -172,14 +166,14 @@
         </table>
     </div>
 
-    <!-- 帳戶清單管理 (保留你的按鈕跟邏輯) -->
+    <!-- 帳戶清單管理 -->
     <div class="input-section" style="margin-top: 40px;">
         <span id="accountStatus" class="status-indicator" style="color: #17a2b8;">✅ 帳戶已更新</span>
         <h3>🏦 銀行帳戶清單管理</h3>
         <p style="color: #666; font-size: 0.9em; margin-top:-10px;">
             更新時系統會自動格式化。支援: `名稱 822 123456` 或 `名稱 中信 ...`
         </p>
-        <textarea id="accountInputData" rows="6" placeholder="貼上您的帳戶清單文字..."></textarea>
+        <textarea id="accountInputData" rows="6" placeholder="正在讀取雲端帳戶清單..."></textarea>
         <div class="btn-group">
             <button class="btn-action" id="uploadAccountListButton">⬆️ 更新與整理帳戶清單</button>
             <button class="btn-clear" id="clearAccountListButton">🗑️ 清空</button>
@@ -191,31 +185,34 @@
 
     <div id="toast">已複製到剪貼簿</div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+    <script>
+        // --- 1. Firebase 初始化 (WorkTools 專屬 - 與 Shop 相同) ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDsUsWuynci0DP71veuu19Ht8bJmhHSkHs",
+            authDomain: "worktools-f53e5.firebaseapp.com",
+            databaseURL: "https://worktools-f53e5-default-rtdb.firebaseio.com",
+            projectId: "worktools-f53e5",
+            storageBucket: "worktools-f53e5.firebasestorage.app",
+            messagingSenderId: "950551082090",
+            appId: "1:950551082090:web:3c2c4962b5ffa044aec613",
+            measurementId: "G-EKPY3SC0BR"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const auth = firebase.auth();
 
         // --- 全域變數 ---
-        let db = null;
-        let isCloudMode = false;
-        let localAccounts = []; // [ {name, bankName, account}, ... ]
-        
-        const STORAGE_KEYS = {
-            SETTINGS: 'weekly_app_settings',
-            DATA: 'weekly_local_sales_data',
-            ACC: 'weekly_local_account_data',
-            BILL: 'weekly_bill_config'
-        };
+        let localAccounts = []; 
+        const DB_ROOT = 'weekly_data'; // 避免跟 shop_v7_data 衝突
 
         const DAY_MAP = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 0: '日' };
         const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
-        const DEFAULT_APP_ID = 'universal-app';
 
-        // 銀行代碼與關鍵字對照 (供自動辨識用)
+        // 銀行資料庫
         const BANK_CODE_MAP = {
             "822": "🇨🇹 中國信託", "013": "🏦 國泰世華", "812": "💳 台新銀行",
-            "808": "⛰️ 玉山銀行", "012": "💳 台北富邦", "700": "📮 中華郵政"
+            "808": "⛰️ 玉山銀行", "012": "💳 台北富邦", "700": "📮 中華郵政",
+            "004": "🏛️ 台灣銀行", "008": "🏛️ 華南銀行", "807": "🏛️ 永豐銀行"
         };
         const BANK_KEYWORDS = {
             "國泰": "🏦 國泰世華", "世華": "🏦 國泰世華", "013": "🏦 國泰世華",
@@ -230,7 +227,7 @@
         // --- DOM ---
         const $ = id => document.getElementById(id);
 
-        // --- 1. 優化工具: Debounce (防當機) ---
+        // --- 1. 工具: Debounce ---
         function debounce(func, wait) {
             let timeout;
             return function(...args) {
@@ -239,40 +236,35 @@
             };
         }
 
-        // --- 2. 核心: 銀行名稱辨識工具 (新) ---
+        // --- 2. 核心: 銀行辨識 ---
         function detectBankName(input) {
             const raw = input.trim();
-            // 檢查代碼 (如 "822")
             if (BANK_CODE_MAP[raw]) return BANK_CODE_MAP[raw];
-            // 檢查關鍵字 (如 "中信")
             for (const k in BANK_KEYWORDS) {
                 if (raw.includes(k)) return BANK_KEYWORDS[k];
             }
             return raw || DEFAULT_BANK_CATEGORY;
         }
 
-        // --- 3. 核心: 帳戶解析 (升級版) ---
+        // --- 3. 核心: 帳戶解析 ---
         function parseAccountListToFlat(text) {
             const lines = text.split('\n');
             const flatList = [];
             
             lines.forEach(line => {
                 let trim = line.trim();
-                // 忽略雜訊
                 if (!trim || ["總金額", "警語", "入款", "注意事項"].some(k => trim.includes(k))) return;
 
-                // 切割字串
                 let tokens = trim.split(/[\s\t:：,，]+/);
                 let bestAccount = "", bestBank = "", nameParts = [];
 
                 tokens.forEach(token => {
                     const rawDigits = token.replace(/[^\d]/g, '');
-                    // 抓最長的數字當帳號
                     if (rawDigits.length > 5 && !token.includes("電話")) {
                         if (rawDigits.length > (bestAccount.replace(/[^\d]/g, '').length)) {
                             bestAccount = rawDigits;
                         } else {
-                            nameParts.push(token); // 舊的可能是名字雜訊
+                            nameParts.push(token);
                         }
                     } else if (BANK_CODE_MAP[rawDigits] && rawDigits.length === 3) {
                         bestBank = BANK_CODE_MAP[rawDigits];
@@ -333,7 +325,7 @@
             return { personData, dailyTotals, grandTotal, hasData };
         }
 
-        // --- 5. 衝突處理邏輯 ---
+        // --- 5. 衝突處理 ---
         function findDuplicates(flatList) {
             const nameMap = {};
             const duplicates = [];
@@ -388,7 +380,6 @@
             const duplicates = window.currentConflicts;
             const fullList = window.currentFullList;
             const dup = duplicates[dupIdx];
-            
             let newList = fullList.filter(x => x.name.replace(/\s/g,"") !== dup.name.replace(/\s/g,""));
             
             if (method === 'one') {
@@ -440,7 +431,7 @@
             }
         }
 
-        // --- 6. 報表渲染 (新增編輯功能) ---
+        // --- 6. 報表渲染 (含快速編輯) ---
         function generateReport() {
             const input = $('inputData').value;
             const { personData, dailyTotals, grandTotal, hasData } = parseAndCalculate(input);
@@ -460,8 +451,6 @@
                 const p = personData[name];
                 const acc = localAccounts.find(a => a.name === name);
                 const isMissing = !acc;
-                
-                // 安全的 ID 用名 (取代空格)
                 const safeNameId = name.replace(/\s/g, '_');
                 
                 let html = `<div class="person-card ${isMissing ? 'missing-account' : ''}">
@@ -479,7 +468,6 @@
                 const finalAmt = Math.round(p.total * 100);
                 html += `<tr><td colspan="2">總計</td><td class="total-cell">${p.total}</td></tr></table>`;
 
-                // --- 新增：編輯帳號區塊 ---
                 const bankVal = acc ? acc.bankName : '';
                 const accVal = acc ? acc.account : '';
                 const displayHtml = acc ? `<span>${acc.bankName} ${acc.account}</span>` : `<span class="missing-msg">⚠️ 未設定帳號</span>`;
@@ -492,10 +480,9 @@
                 <div id="edit-area-${safeNameId}" class="edit-area" style="display:none;">
                     <input type="text" id="bank-${safeNameId}" value="${bankVal}" placeholder="銀行 (例如: 822 或 中信)">
                     <input type="text" id="acc-${safeNameId}" value="${accVal}" placeholder="帳號">
-                    <button class="btn-sm-save" onclick="window.saveCardAccount('${name}', '${safeNameId}')">💾 儲存並更新清單</button>
+                    <button class="btn-sm-save" onclick="window.saveCardAccount('${name}', '${safeNameId}')">💾 儲存並同步</button>
                 </div>
                 `;
-                // -----------------------
 
                 let copyTxt = `${name} `;
                 if(dateRange) copyTxt += `(${dateRange}) `;
@@ -509,14 +496,12 @@
                 reportDiv.innerHTML += html;
             }
 
-            // Summary
             let sumHtml = '';
             DAY_ORDER.forEach(d => sumHtml += `<tr><td>${DAY_MAP[d]}</td><td>${dailyTotals[d]}</td></tr>`);
             sumHtml += `<tr class="summary-total-row"><td>總合計</td><td>${grandTotal}</td></tr>`;
             $('summaryBody').innerHTML = sumHtml;
         }
 
-        // --- 7. 新功能：單卡片編輯存檔邏輯 ---
         window.toggleEdit = function(safeId) {
             const el = $(`edit-area-${safeId}`);
             el.style.display = el.style.display === 'none' ? 'block' : 'none';
@@ -526,105 +511,125 @@
             const newBankRaw = $(`bank-${safeId}`).value.trim();
             const newAccRaw = $(`acc-${safeId}`).value.trim();
 
-            if (!newAccRaw) {
-                alert("請輸入帳號！"); return;
-            }
+            if (!newAccRaw) { alert("請輸入帳號！"); return; }
 
-            // 1. 自動辨識銀行 (輸入 "822" -> "中國信託")
             const detectedBank = detectBankName(newBankRaw);
-            // 2. 格式化帳號 (純數字轉成 4位一撇)
             const cleanAcc = newAccRaw.replace(/[^\d]/g, '');
             const formattedAcc = cleanAcc.length > 6 ? cleanAcc.replace(/(.{4})/g, '$1-').replace(/-$/, '') : newAccRaw;
 
-            // 3. 更新 localAccounts (移除舊的，加入新的)
-            // 過濾掉名字一樣的舊資料
             localAccounts = localAccounts.filter(a => a.name !== realName);
-            // 加入新資料
-            localAccounts.push({
-                name: realName,
-                bankName: detectedBank,
-                account: formattedAcc
-            });
+            localAccounts.push({ name: realName, bankName: detectedBank, account: formattedAcc });
 
-            // 4. 觸發全面更新 (這會自動更新文字框、存檔、並重繪畫面)
             commitAccountData(localAccounts);
-            alert(`已更新 ${realName} 的帳戶資料！`);
+            alert(`已更新 ${realName} 並同步至雲端！`);
         };
 
+        // --- 7. 雲端同步邏輯 (Firebase Realtime Database) ---
+        
+        async function init() {
+            const badge = $('systemModeBadge');
+            badge.innerText = '📡 連線中...';
+            badge.className = 'mode-badge mode-connecting';
 
-        // --- 8. 存檔與初始化 ---
+            // 1. 匿名登入 (確保權限)
+            try {
+                await auth.signInAnonymously();
+            } catch (e) {
+                console.warn("Auth warning:", e);
+                // 即使登入失敗，如果 DB 規則是公開的，仍可繼續
+            }
+
+            // 2. 監聽連線狀態 (.info/connected)
+            db.ref('.info/connected').on('value', (snap) => {
+                if (snap.val() === true) {
+                    badge.innerText = '☁️ 雲端已連線';
+                    badge.className = 'mode-badge mode-connected';
+                    $('inputData').placeholder = "已連線，請開始輸入...";
+                } else {
+                    badge.innerText = '📡 重新連線中...';
+                    badge.className = 'mode-badge mode-connecting';
+                }
+            });
+
+            // 3. 監聽業績資料
+            db.ref(`${DB_ROOT}/sales`).on('value', (snap) => {
+                const val = snap.val();
+                if (val && $('inputData').value !== val) {
+                    $('inputData').value = val;
+                    generateReport();
+                }
+            });
+
+            // 4. 監聽帳戶資料
+            db.ref(`${DB_ROOT}/accounts`).on('value', (snap) => {
+                const val = snap.val();
+                if (val) {
+                    localAccounts = val.accounts || [];
+                    // 避免覆蓋正在打字的內容 (簡單比對)
+                    const currentRaw = $('accountInputData').value;
+                    if (currentRaw !== val.rawText) {
+                        $('accountInputData').value = val.rawText || '';
+                    }
+                    renderReferenceList(localAccounts);
+                    generateReport();
+                }
+            });
+
+            // 5. 監聽設定
+            db.ref(`${DB_ROOT}/config`).on('value', (snap) => {
+                const val = snap.val();
+                if (val) {
+                    if (val.warning && document.activeElement !== $('billWarningTemplate')) {
+                        $('billWarningTemplate').value = val.warning;
+                    }
+                    if (val.range && document.activeElement !== $('billDateRangeInput')) {
+                        $('billDateRangeInput').value = val.range;
+                    }
+                }
+            });
+        }
+
         const saveSales = debounce((val) => {
-            if(isCloudMode) setDoc(doc(db, `artifacts/${DEFAULT_APP_ID}/public/data/sales/input`), {text: val});
-            else localStorage.setItem(STORAGE_KEYS.DATA, val);
-            showStatus('saveStatus');
+            db.ref(`${DB_ROOT}/sales`).set(val)
+                .then(() => showStatus('saveStatus'))
+                .catch(e => console.error(e));
         }, 1000);
 
         function saveAccountData(raw, list) {
-            const data = {rawText: raw, accounts: list};
-            if(isCloudMode) setDoc(doc(db, `artifacts/${DEFAULT_APP_ID}/public/data/accounts/list`), data);
-            else localStorage.setItem(STORAGE_KEYS.ACC, JSON.stringify(data));
-            showStatus('accountStatus');
+            const data = { rawText: raw, accounts: list };
+            db.ref(`${DB_ROOT}/accounts`).set(data)
+                .then(() => showStatus('accountStatus'))
+                .catch(e => console.error(e));
         }
 
-        async function init() {
-            // Load Settings
-            const set = JSON.parse(localStorage.getItem(STORAGE_KEYS.SETTINGS) || '{}');
-            $('cfgFirebase').value = set.firebaseConfig || '';
-            const bill = JSON.parse(localStorage.getItem(STORAGE_KEYS.BILL) || '{}');
-            if(bill.warning) $('billWarningTemplate').value = bill.warning;
-            if(bill.range) $('billDateRangeInput').value = bill.range;
-
-            if (set.firebaseConfig) {
-                try {
-                    const app = initializeApp(JSON.parse(set.firebaseConfig));
-                    const auth = getAuth(app);
-                    db = getFirestore(app);
-                    await signInAnonymously(auth);
-                    isCloudMode = true;
-                    $('systemModeBadge').className = 'mode-badge mode-cloud';
-                    $('systemModeBadge').innerText = '☁️ 雲端同步模式';
-                    
-                    onSnapshot(doc(db, `artifacts/${DEFAULT_APP_ID}/public/data/sales/input`), s => {
-                        if(s.exists() && $('inputData').value !== s.data().text) {
-                            $('inputData').value = s.data().text; generateReport();
-                        }
-                    });
-                    onSnapshot(doc(db, `artifacts/${DEFAULT_APP_ID}/public/data/accounts/list`), s => {
-                        if(s.exists()) {
-                            const d = s.data();
-                            localAccounts = d.accounts || [];
-                            $('accountInputData').value = d.rawText || '';
-                            renderReferenceList(localAccounts);
-                            generateReport();
-                        }
-                    });
-                } catch(e) { console.error(e); isCloudMode=false; }
-            }
-
-            if(!isCloudMode) {
-                $('inputData').value = localStorage.getItem(STORAGE_KEYS.DATA) || '';
-                const acc = JSON.parse(localStorage.getItem(STORAGE_KEYS.ACC) || '{}');
-                $('accountInputData').value = acc.rawText || '';
-                localAccounts = acc.accounts || [];
-                renderReferenceList(localAccounts);
-                generateReport();
-            }
-        }
+        const saveBillConfig = debounce(() => {
+            const c = { warning: $('billWarningTemplate').value, range: $('billDateRangeInput').value };
+            db.ref(`${DB_ROOT}/config`).set(c);
+        }, 1000);
 
         // --- UI Events ---
         $('inputData').oninput = (e) => { generateReport(); saveSales(e.target.value); };
         $('calculateButton').onclick = generateReport;
-        $('clearButton').onclick = () => { if(confirm('Clear?')) { $('inputData').value=''; generateReport(); saveSales(''); } };
+        $('clearButton').onclick = () => { 
+            if(confirm('確定清空所有業績資料？這會同步刪除雲端資料！')) { 
+                $('inputData').value=''; generateReport(); saveSales(''); 
+            } 
+        };
         
         $('uploadAccountListButton').onclick = handleAccountUpdate;
-        $('clearAccountListButton').onclick = () => { if(confirm('Clear Acc?')) { $('accountInputData').value=''; localAccounts=[]; saveAccountData('',[]); renderReferenceList([]); }};
+        $('clearAccountListButton').onclick = () => { 
+            if(confirm('確定清空帳戶清單？')) { 
+                $('accountInputData').value=''; localAccounts=[]; saveAccountData('',[]); renderReferenceList([]); 
+            }
+        };
 
         $('saveBillConfigBtn').onclick = () => {
-            const c = { warning: $('billWarningTemplate').value, range: $('billDateRangeInput').value };
-            localStorage.setItem(STORAGE_KEYS.BILL, JSON.stringify(c));
+            saveBillConfig();
             generateReport();
-            alert('設定已儲存');
+            alert('設定已儲存並同步！');
         };
+        $('billWarningTemplate').oninput = saveBillConfig;
+        $('billDateRangeInput').oninput = saveBillConfig;
 
         $('exportExcelBtn').onclick = () => {
             const { personData } = parseAndCalculate($('inputData').value);
@@ -638,13 +643,6 @@
             const a = document.createElement('a'); a.href = url; a.download = 'report.csv'; a.click();
         };
 
-        $('openSettingsBtn').onclick = () => $('settingsModal').style.display = 'block';
-        document.querySelector('.close').onclick = () => $('settingsModal').style.display = 'none';
-        $('saveSettingsBtn').onclick = () => {
-            localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify({firebaseConfig: $('cfgFirebase').value}));
-            location.reload();
-        };
-
         window.copyToClipboard = (encoded) => {
             const txt = decodeURIComponent(encoded);
             const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
@@ -653,6 +651,7 @@
         
         function showStatus(id) { $(id).style.display='block'; setTimeout(()=>$(id).style.display='none', 2000); }
 
+        // Start
         init();
     </script>
 </body>
