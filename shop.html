@@ -9,8 +9,22 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <style>
-        /* --- 全局基礎設定 (維持原樣) --- */
-        :root { --primary-dark: #2c3e50; --accent-green: #27ae60; --accent-blue: #3498db; --bg-light: #f4f6f9; --border-color: #e0e0e0; --manual-color: #e67e22; --safe-top: env(safe-area-inset-top); }
+        /* --- 全局基礎設定 --- */
+        :root { 
+            --primary-dark: #2c3e50; 
+            --accent-green: #27ae60; 
+            --accent-blue: #3498db; 
+            --bg-light: #f4f6f9; 
+            --border-color: #e0e0e0; 
+            --manual-color: #e67e22; 
+            --safe-top: env(safe-area-inset-top); 
+            
+            /* MODIFIED: 將 IN/OUT 顏色改為翠綠色，以區分紅色衝突 */
+            --in-out-color: #2ecc71; /* 翠綠色 (Emerald Green) - 代表順利/完成 */
+            
+            /* Conflict Color (維持紅色，作為對比) */
+            --conflict-color: #e74c3c; 
+        }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif; background-color: var(--bg-light); margin: 0; padding: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; padding-top: var(--safe-top); }
         .nav-bar { height: 44px; background: #1a252f; display: flex; align-items: center; padding: 0 10px; gap: 5px; flex-shrink: 0; z-index: 200; justify-content: space-between; }
@@ -33,7 +47,8 @@
         .main-wrapper { display: flex; flex: 1; overflow: hidden; position: relative; }
         .left-panel { width: 100px; min-width: 60px; max-width: 50vw; background: #eef2f3; border-right: 1px solid #ccc; display: flex; flex-direction: column; z-index: 50; flex-shrink: 0; }
         .left-header-bar { height: 30px; background: #dfe4ea; border-bottom: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; color: #7f8c8d; }
-        .left-content { flex: 1; overflow-y: auto; padding-bottom: 20px; }
+        /* FIXED: 隱藏左側滾動條，改由 JS 同步控制，避免雙重滾動條 */
+        .left-content { flex: 1; overflow-y: hidden; padding-bottom: 20px; }
         .staff-card { min-height: 70px; height: auto; border-bottom: 1px solid #ccc; background: #fff; padding: 4px; padding-bottom: 10px; display: flex; flex-direction: column; position: relative; flex-shrink: 0; overflow: hidden; }
         .staff-header { display: flex; align-items: center; margin-bottom: 2px; flex-shrink: 0; }
         .idx-badge { background: #34495e; color: white; font-size: 10px; width: 16px; height: 16px; border-radius: 50%; display: flex; justify-content: center; align-items: center; margin-right: 3px; flex-shrink: 0; }
@@ -52,22 +67,82 @@
         .v-line { position: absolute; top: 0; height: 100%; border-left: 1px dashed #e0e0e0; }
         .track-row { min-height: 70px; height: auto; border-bottom: 1px solid #e0e0e0; position: relative; box-sizing: border-box; }
         .hour-mark { position: absolute; top: 0; height: 100%; border-left: 1px solid #bdc3c7; padding-left: 2px; font-size: 10px; color: #555; line-height: 30px; }
-        .block { position: absolute; top: 4px; bottom: 4px; border-radius: 4px; display: block; padding: 2px 4px; font-size: 11px; box-shadow: 0 1px 3px rgba(0,0,0,0.2); white-space: normal; overflow: hidden; word-wrap: break-word; line-height: 1.2; }
+        .block { position: absolute; top: 4px; bottom: 4px; border-radius: 4px; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 2px 4px; font-size: 11px; box-shadow: 0 1px 3px rgba(0,0,0,0.2); white-space: normal; overflow: hidden; word-wrap: break-word; line-height: 1.2; cursor: pointer; z-index: 1; } 
         .type-work { background: #3498db; color: white; border: 1px solid #2980b9; z-index: 2; font-weight: bold; }
         .type-free { background: #d4efdf; color: #1e8449; border: 1px dashed #2ecc71; height: 24px; top: 50%; transform: translateY(-50%); opacity: 0.95; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; line-height: 1.1; }
-        .type-conflict { background: #e74c3c; color: white; z-index: 3; }
+        .type-conflict { background: var(--conflict-color); color: white; z-index: 3; }
         .current-time-line { position: absolute; top: 0; bottom: 0; width: 2px; background: #e74c3c; z-index: 40; pointer-events: none; display: none; }
-        /* Modal */
+        
+        /* IN/OUT 視覺提示 */
+        /* 原始的邊框/陰影提示 (正在進行中) */
+        .block[data-in-time]:not([data-out-time]) {
+            box-shadow: 0 0 10px 3px var(--in-out-color); /* 翠綠色陰影 */
+            border: 1px solid var(--in-out-color);
+        }
+        /* 原始的邊框/陰影提示 (已完成) */
+        .block[data-in-time][data-out-time] {
+            border: 2px solid var(--in-out-color); /* 翠綠色邊框 */
+            box-shadow: none;
+        }
+
+        /* NEW: 半塊顏色渲染 */
+        .block::before,
+        .block::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 0; 
+            transition: width 0.3s ease-in-out;
+            z-index: -1; /* 放在文字下層 */
+            border-radius: 4px;
+        }
+
+        /* 1. IN - 左側半塊 (翠綠色) */
+        .block[data-in-time]::before {
+            left: 0;
+            background: var(--in-out-color); 
+            width: 50%; /* 左半部 */
+        }
+        
+        /* 2. OUT - 右側半塊 (翠綠色) */
+        .block[data-out-time]::after {
+            right: 0;
+            background: var(--in-out-color); 
+            width: 50%; /* 右半部 */
+        }
+        
+        /* Modal - IN/OUT Time Tracker Styles */
+        #timeModal .time-input-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; }
+        #timeModal .time-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px dashed #ccc; }
+        #timeModal .time-item:last-child { border-bottom: none; }
+        #timeModal .time-label { font-weight: bold; color: #2c3e50; font-size: 15px; }
+        /* NEW: Input 樣式 */
+        #timeModal .time-display { 
+            font-size: 18px; 
+            font-weight: bold; 
+            color: var(--accent-blue); 
+            width: 80px; 
+            text-align: right; 
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 4px;
+            min-height: 28px;
+        }
+        #timeModal .btn-record { background: #f39c12; color: white; border: none; padding: 6px 10px; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; }
+        
+        /* Modal - General Styles */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; display: none; justify-content: center; align-items: center; }
         .modal-overlay.active { display: flex; }
         .modal-content { background: white; width: 90%; max-width: 400px; padding: 15px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); display: flex; flex-direction: column; gap: 10px; }
         .modal-title { font-weight: bold; font-size: 16px; color: #2c3e50; text-align: center; }
         .modal-textarea { width: 100%; height: 200px; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; resize: none; font-family: monospace; }
-        .modal-btns { display: flex; gap: 10px; justify-content: space-between; margin-top: 5px; }
-        .modal-btn { flex: 1; padding: 10px; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .modal-btns { display: flex; gap: 10px; justify-content: space-between; margin-top: 5px; } 
+        .modal-btn { flex: 1; padding: 10px; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; } 
         .btn-cancel { background: #95a5a6; color: white; }
         .btn-save { background: #2ecc71; color: white; }
-        /* 日結 */
+
+        /* 日結 (樣式與之前版本一致) */
         .settle-container { width: 100%; padding: 10px; overflow-y: auto; height: 100%; padding-bottom: 80px; }
         .config-section { display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; }
         .config-panel { background: white; padding: 10px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
@@ -92,6 +167,7 @@
         .table-scroll { overflow-x: auto; max-height: 50vh; }
         table { width: 100%; border-collapse: collapse; min-width: 600px; }
         thead th { position: sticky; top: 0; background-color: #343a40; color: white; padding: 8px; text-align: center; font-size: 12px; z-index: 10; white-space: nowrap; }
+        .staff-footer td { padding: 8px 4px; border-top: 2px solid #3498db; background-color: #ecf0f1; font-size: 13px; font-weight: bold; text-align: center; }
         tbody td { padding: 6px 4px; border-bottom: 1px solid #eee; font-size: 13px; text-align: center; vertical-align: middle; }
         .group-header { background-color: #e9ecef; }
         .group-header td { padding: 8px; font-size: 14px; text-align: left; font-weight: bold; }
@@ -189,7 +265,7 @@
                 <table id="settleTable">
                     <thead>
                         <tr>
-                            <th width="20%">內容</th>
+                            <th width="25%">內容</th>
                             <th width="10%">加值</th>
                             <th width="10%">底薪</th>
                             <th width="12%">阿姨</th>
@@ -206,6 +282,7 @@
     </div>
 </div>
 
+<!-- 班表編輯 Modal -->
 <div id="editModal" class="modal-overlay">
     <div class="modal-content">
         <div class="modal-title">編輯班表</div>
@@ -217,10 +294,47 @@
     </div>
 </div>
 
+<!-- NEW: IN/OUT Time Tracker Modal -->
+<div id="timeModal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-title" id="timeModalTitle">記錄服務時間 (可手動修改)</div>
+        
+        <div class="time-input-group">
+            <div class="time-item">
+                <div class="time-label">預約時段：</div>
+                <div class="time-display" id="scheduledTime">--:-- - --:--</div>
+            </div>
+            <div class="time-item">
+                <div class="time-label">實際進場 (IN)：</div>
+                <!-- CHANGED to input for manual edit -->
+                <input type="text" class="time-display" id="inTimeInput" placeholder="--:--" inputmode="numeric" pattern="\d{2}:\d{2}">
+                <!-- CHANGED button to fill current time -->
+                <button class="btn-record" onclick="fillCurrentTime('in')">當前時間 IN</button>
+            </div>
+            <div class="time-item">
+                <div class="time-label">實際離場 (OUT)：</div>
+                <!-- CHANGED to input for manual edit -->
+                <input type="text" class="time-display" id="outTimeInput" placeholder="--:--" inputmode="numeric" pattern="\d{2}:\d{2}">
+                <!-- CHANGED button to fill current time -->
+                <button class="btn-record" onclick="fillCurrentTime('out')">當前時間 OUT</button>
+            </div>
+        </div>
+        
+        <!-- MODIFIED buttons layout for 3 buttons -->
+        <div class="modal-btns" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+            <!-- New: Clear Button -->
+            <button class="modal-btn" style="background: #e74c3c; color: white;" onclick="clearManualTime()">清空時間</button>
+            <button class="modal-btn btn-cancel" onclick="closeTimeModal()">關閉</button>
+            <button class="modal-btn btn-save" onclick="saveManualTime()">儲存時間</button>
+        </div>
+    </div>
+</div>
+<!-- END NEW MODAL -->
+
 <script>
-    // === 2. Firebase 設定 ===
+    // === 1. Firebase 設定與初始化 (請注意安全性) ===
     const firebaseConfig = {
-        apiKey: "AIzaSyDsUsWuynci0DP71veuu19Ht8bJmhHSkHs",
+        apiKey: "AIzaSyDsUsWuynci0DP71veuu19Ht8bJmhHSkHs", 
         authDomain: "worktools-f53e5.firebaseapp.com",
         databaseURL: "https://worktools-f53e5-default-rtdb.firebaseio.com",
         projectId: "worktools-f53e5",
@@ -232,53 +346,32 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    function switchTab(tabId) {
-        document.querySelectorAll('.view-container').forEach(el => el.classList.remove('active'));
-        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-        document.getElementById('view-' + tabId).classList.add('active');
-        const btns = document.querySelectorAll('.tab-btn');
-        if(tabId === 'schedule') btns[0].classList.add('active');
-        else btns[1].classList.add('active');
-        if(tabId === 'schedule') setTimeout(() => { renderScheduleAll(); }, 50);
-        if(tabId === 'settle') renderSettlementTable();
-    }
-
+    // === 2. 全局狀態與常數 ===
     const PX_PER_MIN = 2;
+    // 💡 CodeSage: staffData 現在可能包含 taskStatuses: { [taskId]: { inTime: '...', outTime: '...' } }
     let staffData = [{ id: 1, name: "哀哀", content: "", height: null }, { id: 2, name: "安安", content: "", height: null }];
-    
-    // 加值服務預設資料 (若雲端有則會被覆蓋)
     let services = [ {name: "nocon", price: 1000}, {name: "口爆", price: 500}, {name: "顏射", price: 500}, {name: "入珠", price: 500} ];
 
     let currentEditingStaffId = null; 
-
+    let currentTaskElement = null; // 儲存當前點擊的任務方塊元素
+    let currentTaskInfo = null; // { staffId, taskId }
+    
     const leftContent = document.getElementById('leftContent');
     const rightContent = document.getElementById('rightContent');
     const rulerContainer = document.getElementById('rulerContainer');
     const syncStatus = document.getElementById('syncStatus');
 
-    // 滾動同步
-    let isSyncingLeft = false; let isSyncingRight = false;
-    rightContent.addEventListener('scroll', function() {
-        if (!isSyncingLeft) { isSyncingRight = true; leftContent.scrollTop = this.scrollTop; rulerContainer.scrollLeft = this.scrollLeft; }
-        isSyncingLeft = false;
-    });
-    leftContent.addEventListener('scroll', function() {
-        if (!isSyncingRight) { isSyncingLeft = true; rightContent.scrollTop = this.scrollTop; }
-        isSyncingRight = false;
-    });
+    const WORK_UNIT_TABLE = {40: 1, 60: 1, 120: 2};
+    const AUNT_EXTRA_NAMES = ["顏同", "阿鳴", "曼達", "有菜", "姚貴"];
 
-    // --- 左右寬度拖拉 ---
+    // 拖曳邏輯 (維持不變)
     const colResizer = document.getElementById('colResizer');
     const leftPanel = document.getElementById('leftPanel');
     let isColDragging = false; let colStartX, colStartWidth;
-    
     colResizer.addEventListener('touchstart', (e) => { isColDragging = true; colStartX = e.touches[0].clientX; colStartWidth = parseInt(window.getComputedStyle(leftPanel).width, 10); });
     colResizer.addEventListener('mousedown', (e) => { isColDragging = true; colStartX = e.clientX; colStartWidth = parseInt(window.getComputedStyle(leftPanel).width, 10); document.body.style.cursor = 'col-resize'; });
-    
-    // --- 上下高度拖拉 ---
     let isRowDragging = false; 
     let rowStartY, rowStartHeight, draggingStaffId;
-
     leftContent.addEventListener('touchstart', (e) => {
         if (e.target.classList.contains('row-resizer')) {
             isRowDragging = true;
@@ -298,7 +391,6 @@
             e.preventDefault();
         }
     });
-
     document.addEventListener('touchmove', (e) => {
         if (isColDragging) {
             let newWidth = colStartWidth + (e.touches[0].clientX - colStartX);
@@ -312,7 +404,6 @@
             updateRowHeight(draggingStaffId, newHeight);
         }
     }, {passive: false});
-
     document.addEventListener('mousemove', (e) => {
         if (isColDragging) {
             e.preventDefault();
@@ -328,7 +419,6 @@
             updateRowHeight(draggingStaffId, newHeight);
         }
     });
-
     document.addEventListener('touchend', () => { 
         if (isRowDragging && draggingStaffId) saveStaffHeight(draggingStaffId);
         isColDragging = false; isRowDragging = false; draggingStaffId = null; 
@@ -338,82 +428,121 @@
         isColDragging = false; isRowDragging = false; draggingStaffId = null; document.body.style.cursor = 'default'; 
     });
 
+    // --- 輔助函式 (維持不變) ---
+    function switchTab(tabId) {
+        document.querySelectorAll('.view-container').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById('view-' + tabId).classList.add('active');
+        const btns = document.querySelectorAll('.tab-btn');
+        if(tabId === 'schedule') btns[0].classList.add('active');
+        else btns[1].classList.add('active');
+        if(tabId === 'schedule') setTimeout(() => { renderScheduleAll(); }, 50);
+        if(tabId === 'settle') renderSettlementTable();
+    }
     function updateRowHeight(id, height) {
         const card = document.querySelector(`.staff-card[data-staff-id="${id}"]`);
         const track = document.getElementById(`track-${id}`);
         if (card) card.style.height = height + 'px';
         if (track) track.style.height = height + 'px';
     }
-
     function saveStaffHeight(id) {
         const card = document.querySelector(`.staff-card[data-staff-id="${id}"]`);
         if (card) {
             const h = parseInt(card.style.height);
-            const staff = staffData.find(s => s.id === id);
-            if (staff) { staff.height = h; saveScheduleData(); }
+            staffData = staffData.map(s => s.id === id ? { ...s, height: h } : s);
+            saveScheduleData(); 
         }
     }
+    
+    // --- 唯一任務 ID 生成 (維持不變) ---
+    function getTaskHash(rawText, startMinutes) {
+        const safeText = rawText.replace(/[^a-zA-Z0-9]/g, '').substring(0, 15);
+        return `T${startMinutes}_${safeText}`;
+    }
 
-    // === 3. 初始化 Firebase 監聽 (取代 initSchedule) ===
+    // --- 3. 資料同步 (Firebase) ---
     function initSchedule() {
         syncStatus.style.background = "orange";
-        // 監聽 shop_v7_data 這個節點
         db.ref('shop_v7_data').on('value', (snapshot) => {
             const val = snapshot.val();
             if (val) {
-                // 更新人員資料
-                staffData = val.staffData || [];
-                // 更新日期
+                // FIXED: 增加資料讀取容錯。如果 Firebase 傳回的是物件（因為陣列稀疏），將其轉換為陣列，避免白畫面。
+                let rawStaffData = val.staffData || [];
+                if (!Array.isArray(rawStaffData) && typeof rawStaffData === 'object') {
+                    rawStaffData = Object.values(rawStaffData);
+                }
+
+                // 確保載入 staffData 時，即使 taskStatuses 遺失，也不會中斷
+                staffData = rawStaffData.map(s => ({ ...s, taskStatuses: s.taskStatuses || {} }));
+                
                 if(val.date) document.getElementById('dateInput').value = val.date;
-                // 更新加值服務清單
                 if(val.services) {
                     services = val.services;
                     renderServices();
                 }
                 
                 renderScheduleAll();
-                renderSettlementTable();
-                syncStatus.style.background = "#2ecc71"; // 綠燈代表連線中
+                if (document.getElementById('view-settle').classList.contains('active')) {
+                    renderSettlementTable();
+                }
+                syncStatus.style.background = "#2ecc71";
             } else {
-                // 如果是第一次使用，上傳預設值
                 saveScheduleData();
             }
         });
         setInterval(updateTimeLineAndClock, 1000);
+        
+        // FIXED: 加入捲動同步監聽 (Sync Scroll)
+        // 讓右側排班區捲動時，左側人員名單(上下)與上方時間尺(左右)同步捲動
+        if (rightContent && leftContent && rulerContainer) {
+            rightContent.addEventListener('scroll', () => {
+                leftContent.scrollTop = rightContent.scrollTop;
+                rulerContainer.scrollLeft = rightContent.scrollLeft;
+            });
+        }
     }
 
-    // === 4. 上傳資料到雲端 (取代 saveScheduleData) ===
     function saveScheduleData() {
-        syncStatus.style.background = "red"; // 上傳中亮紅燈
+        syncStatus.style.background = "red";
         const dataToSave = {
-            staffData: staffData,
+            // 將完整的 staffData (包含 taskStatuses) 存入 Firebase
+            staffData: staffData, 
             date: document.getElementById('dateInput').value,
             services: services
         };
         db.ref('shop_v7_data').set(dataToSave).then(() => {
-            syncStatus.style.background = "#2ecc71"; // 完成變回綠燈
+            syncStatus.style.background = "#2ecc71";
+        }).catch(error => {
+            console.error("Firebase Save Error:", error);
+            syncStatus.style.background = "#f1c40f";
         });
     }
 
+    // --- 4. 人員與班表管理 (維持不變) ---
     function resetSchedule() {
         if(confirm("確定要清空所有人員和內容嗎？(雲端也會清空)")) { 
-            // 保留一個空的人員，避免陣列全空出錯
-            staffData = [{ id: Date.now(), name: "新人員", content: "", height: null }];
+            staffData = [{ id: Date.now(), name: "新人員", content: "", height: null, taskStatuses: {} }];
             saveScheduleData(); 
         }
     }
     function addStaff() {
-        const newId = Date.now(); staffData.push({ id: newId, name: "新", content: "", height: null });
+        // 新增人員時，初始化 taskStatuses
+        const newId = Date.now(); staffData.push({ id: newId, name: "新", content: "", height: null, taskStatuses: {} });
         saveScheduleData(); renderScheduleAll();
     }
     function removeStaff(id) {
-        if(confirm("刪除此人？")) { staffData = staffData.filter(s => s.id !== id); saveScheduleData(); renderScheduleAll(); }
+        if(confirm("刪除此人？")) { 
+            staffData = staffData.filter(s => s.id !== id); 
+            saveScheduleData(); 
+            renderScheduleAll(); 
+        }
     }
     function updateStaffName(id, newName) {
-        const staff = staffData.find(s => s.id === id); if (staff) staff.name = newName; saveScheduleData();
+        staffData = staffData.map(staff => 
+            staff.id === id ? { ...staff, name: newName } : staff
+        );
+        saveScheduleData();
     }
-    
-    // Modal
     function openEditModal(staffId) {
         const staff = staffData.find(s => s.id === staffId); if (!staff) return;
         currentEditingStaffId = staffId;
@@ -425,12 +554,144 @@
     function saveModalData() {
         if (!currentEditingStaffId) return;
         const newContent = document.getElementById('modalTextarea').value;
-        const staff = staffData.find(s => s.id === currentEditingStaffId);
-        if (staff) { staff.content = newContent; saveScheduleData(); renderScheduleAll(); }
+        staffData = staffData.map(staff => 
+            staff.id === currentEditingStaffId ? { ...staff, content: newContent } : staff
+        );
+        saveScheduleData(); 
+        renderScheduleAll();
         closeEditModal();
     }
 
-    function renderScheduleAll() { renderSidebar(); renderTracksOnly(); }
+
+    // --- 5. IN/OUT 打卡/手動編輯邏輯 ---
+
+    function openTimeModal(element, staffId, taskId, content, scheduledStart, scheduledEnd) {
+        currentTaskElement = element;
+        currentTaskInfo = { staffId, taskId };
+
+        document.getElementById('timeModalTitle').innerText = `記錄服務時間: ${content.substring(0, 20)}...`;
+        document.getElementById('scheduledTime').innerText = `${scheduledStart} - ${scheduledEnd}`;
+        
+        // 讀取並顯示現有的 IN/OUT 時間到輸入框
+        const inTime = currentTaskElement.dataset.inTime || '';
+        const outTime = currentTaskElement.dataset.outTime || '';
+        document.getElementById('inTimeInput').value = inTime;
+        document.getElementById('outTimeInput').value = outTime;
+        
+        document.getElementById('timeModal').classList.add('active');
+    }
+    
+    function closeTimeModal() {
+        document.getElementById('timeModal').classList.remove('active');
+        currentTaskElement = null;
+        currentTaskInfo = null;
+    }
+    
+    function getCurrentTimeDisplay() {
+        const now = new Date();
+        // 處理跨夜時間，如果現在是凌晨 0點到 11點 (即 24:00 - 35:00)
+        let h = now.getHours();
+        if (h >= 0 && h < 11) h += 24; 
+        
+        let m = now.getMinutes();
+        return `${h < 10 ? "0"+h : h}:${m < 10 ? "0"+m : m}`;
+    }
+    
+    // NEW: 填寫當前時間到輸入框
+    function fillCurrentTime(type) {
+        const currentTime = getCurrentTimeDisplay();
+        const inputId = type === 'in' ? 'inTimeInput' : 'outTimeInput';
+        document.getElementById(inputId).value = currentTime;
+    }
+    
+    // NEW: 儲存手動輸入/打卡的時間
+    function saveManualTime() {
+        if (!currentTaskElement || !currentTaskInfo) return;
+        
+        const { staffId, taskId } = currentTaskInfo;
+        const newInTime = document.getElementById('inTimeInput').value.trim();
+        const newOutTime = document.getElementById('outTimeInput').value.trim();
+
+        // FIXED: 增加時間格式驗證，防止輸入錯誤導致資料損壞
+        const timeRegex = /^\d{2}:\d{2}$/;
+        if ((newInTime && !timeRegex.test(newInTime)) || (newOutTime && !timeRegex.test(newOutTime))) {
+            alert("時間格式錯誤！請使用 HH:MM 格式 (例如 14:30)");
+            return;
+        }
+        
+        // 1. 更新資料狀態 (in-memory staffData)
+        staffData = staffData.map(staff => {
+            if (staff.id === staffId) {
+                const currentStatuses = staff.taskStatuses || {};
+                const updatedTaskStatus = {};
+                
+                // 僅儲存非空值，確保資料庫乾淨
+                if (newInTime) updatedTaskStatus.inTime = newInTime;
+                if (newOutTime) updatedTaskStatus.outTime = newOutTime;
+                
+                return {
+                    ...staff,
+                    taskStatuses: {
+                        ...currentStatuses,
+                        [taskId]: updatedTaskStatus
+                    }
+                };
+            }
+            return staff;
+        });
+        
+        // 2. 觸發雲端同步 (CRITICAL)
+        saveScheduleData(); 
+        
+        // 3. 更新 DOM dataset (這會觸發 CSS 視覺化)
+        if (newInTime) { currentTaskElement.dataset.inTime = newInTime; } else { delete currentTaskElement.dataset.inTime; }
+        if (newOutTime) { currentTaskElement.dataset.outTime = newOutTime; } else { delete currentTaskElement.dataset.outTime; }
+
+        closeTimeModal();
+    }
+
+    // NEW: 清空 IN/OUT 時間並同步 (一鍵取消功能)
+    function clearManualTime() {
+        if (!currentTaskElement || !currentTaskInfo) return;
+        
+        const { staffId, taskId } = currentTaskInfo;
+        
+        // 1. 更新資料狀態 (in-memory staffData)
+        staffData = staffData.map(staff => {
+            if (staff.id === staffId) {
+                const currentStatuses = staff.taskStatuses || {};
+                
+                // 刪除此任務 ID 的狀態記錄
+                const updatedTaskStatuses = { ...currentStatuses };
+                delete updatedTaskStatuses[taskId];
+
+                return {
+                    ...staff,
+                    taskStatuses: updatedTaskStatuses
+                };
+            }
+            return staff;
+        });
+        
+        // 2. 觸發雲端同步
+        saveScheduleData(); 
+        
+        // 3. 更新 DOM dataset (移除屬性以清除視覺效果)
+        delete currentTaskElement.dataset.inTime;
+        delete currentTaskElement.dataset.outTime;
+        
+        // 4. 清空輸入框
+        document.getElementById('inTimeInput').value = '';
+        document.getElementById('outTimeInput').value = '';
+
+        closeTimeModal();
+    }
+    
+    // --- 6. 排班視覺化渲染 (維持同步優化邏輯) ---
+    function renderScheduleAll() { 
+        renderSidebar(); 
+        requestAnimationFrame(renderTracksOnly); 
+    }
 
     function renderSidebar() {
         leftContent.innerHTML = '';
@@ -438,7 +699,6 @@
             const div = document.createElement('div');
             div.className = 'staff-card';
             div.dataset.staffId = staff.id;
-            // 套用已儲存的高度
             if (staff.height) div.style.height = staff.height + 'px';
             
             div.innerHTML = `
@@ -460,22 +720,30 @@
         const startOfDay = openH * 60;
         const totalWidth = (closeH * 60 - startOfDay) * PX_PER_MIN;
 
+        // FIXED: 防止設定時間錯誤導致寬度為負值
+        if (totalWidth <= 0) {
+            document.getElementById('ruler').innerHTML = '<div style="padding:10px; color:red;">時間設定錯誤 (開 >= 閉)</div>';
+            return;
+        }
+
         document.getElementById('ruler').style.width = totalWidth + 'px';
         document.getElementById('trackContainer').style.width = totalWidth + 'px';
         document.getElementById('gridBg').style.width = totalWidth + 'px';
 
         const ruler = document.getElementById('ruler');
         const gridBg = document.getElementById('gridBg');
-        ruler.innerHTML = ''; gridBg.innerHTML = '';
+        ruler.innerHTML = ''; 
+        const gridBgContent = [];
         for (let h = openH; h <= closeH; h++) {
             let left = (h * 60 - startOfDay) * PX_PER_MIN;
             let displayH = h >= 24 ? h - 24 : h;
-            let mark = document.createElement('div'); mark.className = 'hour-mark'; mark.style.left = left + 'px'; mark.innerText = displayH; ruler.appendChild(mark);
-            let line = document.createElement('div'); line.className = 'v-line'; line.style.left = left + 'px'; gridBg.appendChild(line);
+            ruler.innerHTML += `<div class="hour-mark" style="left:${left}px;">${displayH}</div>`;
+            gridBgContent.push(`<div class="v-line" style="left:${left}px;"></div>`);
         }
+        gridBg.innerHTML = gridBgContent.join(''); 
 
         const container = document.getElementById('trackContainer');
-        container.querySelectorAll('.track-row').forEach(el => el.remove());
+        container.innerHTML = `<div class="grid-lines" id="gridBg" style="width: ${totalWidth}px;">${gridBg.innerHTML}</div><div id="currentTimeLine" class="current-time-line"></div>`;
 
         staffData.forEach(staff => {
             const trackDiv = document.createElement('div');
@@ -483,20 +751,26 @@
             trackDiv.id = `track-${staff.id}`;
             container.appendChild(trackDiv);
             
+            const staffCard = document.querySelector(`.staff-card[data-staff-id="${staff.id}"]`);
             if (staff.height) {
                 trackDiv.style.height = staff.height + 'px';
-            } else if (document.querySelector(`.staff-card[data-staff-id="${staff.id}"]`)) {
-                trackDiv.style.height = document.querySelector(`.staff-card[data-staff-id="${staff.id}"]`).offsetHeight + 'px';
+            } else if (staffCard) {
+                trackDiv.style.height = staffCard.offsetHeight + 'px';
             }
             
-            renderSingleTrack(trackDiv, staff.content, startOfDay, closeH * 60);
+            renderSingleTrack(trackDiv, staff.content, staff.id, startOfDay, closeH * 60);
         });
         updateTimeLineAndClock();
     }
     
-    function renderSingleTrack(container, content, startOfDay, endOfDay) {
+    function renderSingleTrack(container, content, staffId, startOfDay, endOfDay) {
+        container.innerHTML = '';
+        const staff = staffData.find(s => s.id === staffId);
+        const taskStatuses = staff.taskStatuses || {}; 
+
         const lines = content.trim().split('\n');
         const tasks = [];
+        
         lines.forEach(line => {
             const trimmedLine = line.trim();
             if (!trimmedLine) return;
@@ -511,13 +785,48 @@
                 const numMatch = detailStr.match(/^(\d+)/);
                 if (numMatch) duration = parseInt(numMatch[1]);
                 const startTime = parseTime(timeStr);
-                if (startTime !== null) tasks.push({ start: startTime, end: startTime + duration, rawText: trimmedLine, conflict: false });
+                const endTime = startTime + duration;
+                
+                if (startTime !== null) {
+                    const scheduledStart = formatTime(startTime);
+                    const scheduledEnd = formatTime(endTime);
+                    const taskId = getTaskHash(trimmedLine, startTime); 
+
+                    const status = taskStatuses[taskId] || {}; 
+                    
+                    tasks.push({ 
+                        start: startTime, 
+                        end: endTime, 
+                        rawText: trimmedLine, 
+                        conflict: false,
+                        staffId,
+                        taskId,
+                        scheduledStart,
+                        scheduledEnd,
+                        inTime: status.inTime || '',
+                        outTime: status.outTime || ''
+                    });
+                }
             }
         });
+        
         tasks.sort((a, b) => a.start - b.start);
-        for (let i = 0; i < tasks.length - 1; i++) {
-            if (tasks[i].end > tasks[i+1].start) { tasks[i].conflict = true; tasks[i+1].conflict = true; }
+
+        // FIXED: 修正衝突檢測邏輯
+        // 舊邏輯只檢查相鄰，現在檢查所有後續任務是否與當前任務重疊
+        for (let i = 0; i < tasks.length; i++) {
+            for (let j = i + 1; j < tasks.length; j++) {
+                // 因為已排序，如果 Task[j] 的開始時間 >= Task[i] 的結束時間，則後續都不會重疊 (break)
+                // 反之，如果 Task[i] 的結束時間 > Task[j] 的開始時間，則發生重疊
+                if (tasks[i].end > tasks[j].start) {
+                    tasks[i].conflict = true;
+                    tasks[j].conflict = true;
+                } else {
+                    break;
+                }
+            }
         }
+        
         let currentCursor = startOfDay;
         tasks.forEach(task => {
             if (task.start > currentCursor) {
@@ -531,7 +840,10 @@
                 }
             }
             let type = task.conflict ? 'conflict' : 'work';
-            createBlock(container, task.start, task.end, startOfDay, type, task.rawText);
+            
+            // 傳遞所有狀態資訊給 createBlock
+            createBlock(container, task.start, task.end, startOfDay, type, task.rawText, task.staffId, task.taskId, task.scheduledStart, task.scheduledEnd, task.inTime, task.outTime);
+            
             if (task.end > currentCursor) currentCursor = task.end;
         });
     }
@@ -549,8 +861,8 @@
         return h * 60 + m;
     }
     function formatTime(minutes) {
-        if (minutes >= 24 * 60) minutes -= 24 * 60;
-        let h = Math.floor(minutes / 60); let m = minutes % 60;
+        let h = Math.floor(minutes / 60); 
+        let m = minutes % 60;
         return (h < 10 ? "0"+h : h) + ":" + (m < 10 ? "0"+m : m);
     }
     function formatDuration(mins) {
@@ -558,14 +870,35 @@
         return (h > 0 ? h + "h" : "") + (m > 0 ? m + "m" : "");
     }
     
-    function createBlock(container, start, end, offsetStart, type, content) {
+    function createBlock(container, start, end, offsetStart, type, content, staffId, taskId, scheduledStart, scheduledEnd, inTime, outTime) {
         if (end <= start) return;
         const left = (start - offsetStart) * PX_PER_MIN;
         const width = (end - start) * PX_PER_MIN;
         const div = document.createElement('div');
         div.className = `block type-${type}`;
-        div.style.left = left + 'px'; div.style.width = Math.max(width - 2, 2) + 'px';
-        if (type === 'free') { div.innerHTML = content; } else { div.innerText = content; }
+        div.style.left = left + 'px'; 
+        div.style.width = Math.max(width - 2, 2) + 'px'; 
+        
+        if (type === 'free') { 
+            div.innerHTML = content; 
+        } else { 
+            div.innerText = content;
+            
+            if (type === 'work') {
+                div.onclick = function(e) {
+                    e.stopPropagation();
+                    openTimeModal(div, staffId, taskId, content, scheduledStart, scheduledEnd);
+                };
+                
+                div.dataset.staffId = staffId;
+                div.dataset.taskId = taskId;
+                div.dataset.scheduledStart = scheduledStart;
+                div.dataset.scheduledEnd = scheduledEnd;
+                // 讀取從 Firebase 載入的狀態並設定到 DOM
+                if(inTime) div.dataset.inTime = inTime;
+                if(outTime) div.dataset.outTime = outTime;
+            }
+        }
         container.appendChild(div);
     }
     
@@ -575,83 +908,241 @@
         const openH = parseInt(document.getElementById('openHour').value) || 12;
         const now = new Date();
         let h = now.getHours(); let m = now.getMinutes();
-        if(topClock) topClock.innerText = `${(h<10?"0"+h:h)}:${(m<10?"0"+m:m)}`;
+        
+        let clockH = now.getHours();
+        if (clockH >= 0 && clockH < 11) clockH += 24; 
+        
+        if(topClock) topClock.innerText = `${(clockH<10?"0"+clockH:clockH)}:${(m<10?"0"+m:m)}`;
+        
         if (h < 11) h += 24;
         const offsetMins = (h * 60 + m) - openH * 60;
         if (offsetMins >= 0 && line) { line.style.display = 'block'; line.style.left = (offsetMins * PX_PER_MIN) + 'px'; }
         else if (line) { line.style.display = 'none'; }
     }
 
-    // --- 日結 (已修正：加值服務同步) ---
-    const WORK_UNIT_TABLE = {40: 1, 60: 1, 120: 2};
-    const AUNT_EXTRA_NAMES = ["顏同", "阿鳴", "曼達", "有菜", "姚貴"];
-
+    // --- 7. 日結功能 (維持優化後邏輯) ---
     function renderServices() {
         const container = document.getElementById('service_container'); container.innerHTML = '';
         services.forEach((svc, index) => {
             const div = document.createElement('div'); div.className = 'service-row';
-            div.innerHTML = `<input type="text" value="${svc.name}" onchange="updateService(${index}, 'name', this.value)"><span>+</span><input type="number" value="${svc.price}" onchange="updateService(${index}, 'price', this.value)" step="100"><button class="btn-circle btn-red" style="width:18px; height:18px; font-size:12px;" onclick="removeService(${index})">×</button>`;
+            div.innerHTML = `<input type="text" value="${svc.name}" onchange="updateService(${index}, 'name', this.value)"><span>+</span><input type="number" value="${svc.price}" oninput="updateService(${index}, 'price', this.value)" step="100"><button class="btn-circle btn-red" style="width:18px; height:18px; font-size:12px;" onclick="removeService(${index})">×</button>`;
             container.appendChild(div);
         });
     }
-    // 修改：更新服務後會觸發 saveScheduleData (上傳雲端)
+    
     function updateService(index, field, value) { 
-        if(field === 'price') value = parseInt(value) || 0; 
-        services[index][field] = value; 
+        let finalValue = value;
+
+        if(field === 'price') {
+            const parsed = parseInt(value);
+            finalValue = isNaN(parsed) ? services[index].price : parsed;
+            if (value === "") finalValue = 0; 
+        }
+
+        services = services.map((svc, i) => 
+            i === index ? { ...svc, [field]: finalValue } : svc
+        );
+        renderServices();
         renderSettlementTable(); 
-        saveScheduleData(); // 同步
+        saveScheduleData(); 
     }
     function addServiceRow() { 
-        services.push({name: "新", price: 0}); 
+        services.push({name: "新服務", price: 0}); 
         renderServices(); 
         renderSettlementTable(); 
-        saveScheduleData(); // 同步
+        saveScheduleData(); 
     }
     function removeService(index) { 
-        services.splice(index, 1); 
+        services = services.filter((_, i) => i !== index);
         renderServices(); 
         renderSettlementTable(); 
-        saveScheduleData(); // 同步
+        saveScheduleData(); 
     }
 
+    function calculateSettlement(staff, commTable, costTable, services) {
+        const results = [];
+        if (!staff.content.trim()) return results;
+
+        const lines = staff.content.split('\n');
+        lines.forEach(line => {
+            const rawLine = line.trim();
+            if (!rawLine) return;
+
+            const pattern = /(\d+)\/(\d+)-(\d+)/;
+            const match = rawLine.match(pattern);
+
+            let extra_money = 0, base_comm = 0, revenue = 0, base_cost = 0, work = 0;
+            let total_miss = 0, aunt_inc = 0, aunt_disp = 0, balance = 0;
+            let isManual = false;
+
+            if (match) {
+                const duration = parseInt(match[1]), rev = parseInt(match[2]), count = parseInt(match[3]);
+                const key = `${duration}-${count}`;
+                
+                revenue = rev;
+                base_comm = commTable[key] || 0;
+                base_cost = costTable[key] || 0;
+                work = WORK_UNIT_TABLE[duration] || 0;
+
+                services.forEach(svc => { 
+                    if (rawLine.toLowerCase().includes(svc.name.toLowerCase())) extra_money += svc.price; 
+                });
+
+                let realName = staff.name; 
+                const nameMatch = rawLine.match(/^([^\d\s]+)/); 
+                if (nameMatch && !nameMatch[1].includes(':')) realName = nameMatch[1];
+                
+                total_miss = base_comm + extra_money;
+                
+                aunt_inc = revenue - base_cost - extra_money; 
+                if (AUNT_EXTRA_NAMES.includes(realName)) aunt_inc += 100;
+                aunt_disp = Math.floor(aunt_inc / 100); 
+
+                balance = revenue - total_miss;
+            } else {
+                isManual = true;
+            }
+
+            results.push({
+                rawLine,
+                isManual,
+                revenue,
+                extra_money,
+                base_comm,
+                total_miss,
+                aunt_disp,
+                balance,
+                work,
+            });
+        });
+
+        return results;
+    }
+    function updateLocalStaffTotal(detailRow) {
+        if (!detailRow) return;
+        let groupHeader = detailRow.previousElementSibling;
+        while (groupHeader && !groupHeader.classList.contains('group-header')) {
+            groupHeader = groupHeader.previousElementSibling;
+        }
+        if (!groupHeader) return;
+        let staff_t_extra = 0, staff_t_base = 0; 
+        let staff_t_aunt = 0, staff_t_rev = 0, staff_t_com = 0, staff_t_bal = 0, staff_t_wk = 0;
+        let currentRow = groupHeader.nextElementSibling;
+        let targetFooter = null;
+        while (currentRow && !currentRow.classList.contains('group-header')) {
+            if (currentRow.classList.contains('staff-footer')) {
+                targetFooter = currentRow;
+                break;
+            }
+            const getVal = (cls) => { 
+                const c = currentRow.querySelector('.' + cls); 
+                if (!c) return 0; 
+                return parseFloat(c.innerText.replace(/[^\d.-]/g, '')) || 0; 
+            };
+            staff_t_extra += getVal('col-extra');
+            staff_t_base += getVal('col-base');
+            staff_t_aunt += getVal('col-aunt');
+            staff_t_rev += getVal('col-rev');
+            staff_t_com += getVal('col-comm');
+            staff_t_bal += getVal('col-bal');
+            staff_t_wk += getVal('col-work');
+            currentRow = currentRow.nextElementSibling;
+        }
+        if (targetFooter) {
+            const cells = targetFooter.querySelectorAll('td');
+            cells[1].innerText = staff_t_extra.toLocaleString();
+            cells[2].innerText = staff_t_base.toLocaleString();
+            cells[3].innerText = staff_t_aunt;
+            cells[4].innerText = staff_t_rev.toLocaleString();
+            cells[5].innerText = staff_t_com.toLocaleString();
+            cells[6].innerText = staff_t_bal.toLocaleString();
+            cells[7].innerText = staff_t_wk;
+        }
+    }
     function renderSettlementTable() {
         const commTable = { "40-1": parseInt(document.getElementById('base_40_1').value) || 0, "60-1": parseInt(document.getElementById('base_60_1').value) || 0, "60-2": parseInt(document.getElementById('base_60_2').value) || 0, "120-3": parseInt(document.getElementById('base_120_3').value) || 0 };
         const costTable = { "40-1": parseInt(document.getElementById('cost_40_1').value) || 0, "60-1": parseInt(document.getElementById('cost_60_1').value) || 0, "60-2": parseInt(document.getElementById('cost_60_2').value) || 0, "120-3": parseInt(document.getElementById('cost_120_3').value) || 0 };
 
         let html = "";
+        let grand_t_aunt = 0, grand_t_rev = 0, grand_t_com = 0, grand_t_bal = 0, grand_t_wk = 0;
+
         staffData.forEach(staff => {
             if (!staff.content.trim()) return;
+            let staff_t_extra = 0, staff_t_base = 0; 
+            let staff_t_aunt = 0, staff_t_rev = 0, staff_t_com = 0, staff_t_bal = 0, staff_t_wk = 0;
             html += `<tr class="group-header"><td colspan="8">${staff.name}</td></tr>`;
-            const lines = staff.content.split('\n');
-            lines.forEach(line => {
-                const rawLine = line.trim();
-                if (!rawLine) return;
-                const pattern = /(\d+)\/(\d+)-(\d+)/; const match = rawLine.match(pattern);
-                if (match) {
-                    const duration = parseInt(match[1]), revenue = parseInt(match[2]), count = parseInt(match[3]);
-                    const key = `${duration}-${count}`;
-                    let realName = staff.name; const nameMatch = rawLine.match(/^([^\d\s]+)/); if (nameMatch && !nameMatch[1].includes(':')) realName = nameMatch[1];
-                    let extra_money = 0; services.forEach(svc => { if (rawLine.toLowerCase().includes(svc.name.toLowerCase())) extra_money += svc.price; });
-                    const base_comm = commTable[key] || 0; const total_miss = base_comm + extra_money; const base_cost = costTable[key] || 0;
-                    let aunt_inc = revenue - base_cost - extra_money; if (AUNT_EXTRA_NAMES.includes(realName)) aunt_inc += 100;
-                    const aunt_disp = Math.floor(aunt_inc / 100); const balance = revenue - total_miss; const work = WORK_UNIT_TABLE[duration] || 0;
-                    html += `<tr><td><div style="font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; width:70px;">${rawLine}</div></td><td contenteditable="true" oninput="onCellEdit(this)" class="col-extra">${extra_money}</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-base">${base_comm}</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-aunt"><b>${aunt_disp}</b></td><td contenteditable="true" oninput="onCellEdit(this)" class="col-rev text-green">${revenue}</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-comm text-red">${total_miss}</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-bal text-blue">${balance}</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-work">${work}</td></tr>`;
+            const settlements = calculateSettlement(staff, commTable, costTable, services);
+            settlements.forEach(data => {
+                staff_t_extra += data.extra_money;
+                staff_t_base += data.base_comm;
+                staff_t_aunt += data.aunt_disp;
+                staff_t_rev += data.revenue;
+                staff_t_com += data.total_miss;
+                staff_t_bal += data.balance;
+                staff_t_wk += data.work;
+                if (data.isManual) {
+                     html += `<tr class="row-error"><td style="text-align:left; font-size:11px; padding: 6px 6px; color: ${data.rawLine ? '#2c3e50' : '#95a5a6'};">${data.rawLine || '手動輸入'}</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-extra">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-base">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-aunt">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-rev">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-comm">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-bal">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-work">0</td></tr>`;
                 } else {
-                     html += `<tr class="row-error"><td>手動</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-extra">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-base">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-aunt">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-rev">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-comm">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-bal">0</td><td contenteditable="true" oninput="onCellEdit(this)" class="col-work">0</td></tr>`;
+                    html += `<tr><td style="text-align:left; font-size:11px; padding: 6px 6px;">${data.rawLine}</td>
+                             <td contenteditable="true" oninput="onCellEdit(this)" class="col-extra">${data.extra_money}</td>
+                             <td contenteditable="true" oninput="onCellEdit(this)" class="col-base">${data.base_comm}</td>
+                             <td contenteditable="true" oninput="onCellEdit(this)" class="col-aunt"><b>${data.aunt_disp}</b></td>
+                             <td contenteditable="true" oninput="onCellEdit(this)" class="col-rev text-green">${data.revenue}</td>
+                             <td contenteditable="true" oninput="onCellEdit(this)" class="col-comm text-red">${data.total_miss}</td>
+                             <td contenteditable="true" oninput="onCellEdit(this)" class="col-bal text-blue">${data.balance}</td>
+                             <td contenteditable="true" oninput="onCellEdit(this)" class="col-work">${data.work}</td></tr>`;
                 }
             });
+            html += `<tr class="staff-footer">
+                        <td style="text-align: right; font-weight: bold;">${staff.name} 總計</td>
+                        <td>${staff_t_extra.toLocaleString()}</td>
+                        <td>${staff_t_base.toLocaleString()}</td>
+                        <td class="staff-t-aunt">${staff_t_aunt}</td>
+                        <td class="staff-t-rev text-green">${staff_t_rev.toLocaleString()}</td>
+                        <td class="staff-t-com text-red">${staff_t_com.toLocaleString()}</td>
+                        <td class="staff-t-bal text-blue">${staff_t_bal.toLocaleString()}</td>
+                        <td class="staff-t-wk">${staff_t_wk}</td>
+                    </tr>`;
+            grand_t_aunt += staff_t_aunt;
+            grand_t_rev += staff_t_rev;
+            grand_t_com += staff_t_com;
+            grand_t_bal += staff_t_bal;
+            grand_t_wk += staff_t_wk;
         });
         document.getElementById('table_body').innerHTML = html;
-        updateTotalsFromDOM();
+        document.getElementById('total_aunt').innerText = grand_t_aunt; 
+        document.getElementById('total_revenue').innerText = grand_t_rev.toLocaleString(); 
+        document.getElementById('total_commission').innerText = grand_t_com.toLocaleString(); 
+        document.getElementById('total_balance').innerText = grand_t_bal.toLocaleString(); 
+        document.getElementById('total_work').innerText = grand_t_wk;
     }
-    function onCellEdit(cell) { cell.classList.add('manual-edit'); updateTotalsFromDOM(); }
+    function onCellEdit(cell) { 
+        cell.classList.add('manual-edit'); 
+        const detailRow = cell.closest('tr');
+        if (detailRow && !detailRow.classList.contains('staff-footer') && !detailRow.classList.contains('group-header')) {
+            updateLocalStaffTotal(detailRow); 
+        }
+        updateTotalsFromDOM(); 
+    }
     function updateTotalsFromDOM() {
-        let t_rev = 0, t_com = 0, t_aunt = 0, t_bal = 0, t_wk = 0;
-        document.querySelectorAll('#table_body tr:not(.group-header)').forEach(row => {
-            const getVal = (cls) => { const c = row.querySelector('.'+cls); if(!c)return 0; return parseFloat(c.innerText.replace(/[^\d.-]/g, ''))||0; };
-            t_aunt += getVal('col-aunt'); t_rev += getVal('col-rev'); t_com += getVal('col-comm'); t_bal += getVal('col-bal'); t_wk += getVal('col-work');
+        let t_aunt = 0, t_rev = 0, t_com = 0, t_bal = 0, t_wk = 0;
+        document.querySelectorAll('#table_body tr.staff-footer').forEach(row => {
+            const cells = row.querySelectorAll('td');
+            const getVal = (index) => {
+                const text = cells[index].innerText.replace(/[^\d.-]/g, '');
+                return parseFloat(text) || 0;
+            };
+            t_aunt += getVal(3); 
+            t_rev += getVal(4); 
+            t_com += getVal(5); 
+            t_bal += getVal(6); 
+            t_wk += getVal(7);
         });
-        document.getElementById('total_aunt').innerText = t_aunt; document.getElementById('total_revenue').innerText = t_rev.toLocaleString(); document.getElementById('total_commission').innerText = t_com.toLocaleString(); document.getElementById('total_balance').innerText = t_bal.toLocaleString(); document.getElementById('total_work').innerText = t_wk;
+        document.getElementById('total_aunt').innerText = t_aunt; 
+        document.getElementById('total_revenue').innerText = t_rev.toLocaleString(); 
+        document.getElementById('total_commission').innerText = t_com.toLocaleString(); 
+        document.getElementById('total_balance').innerText = t_bal.toLocaleString(); 
+        document.getElementById('total_work').innerText = t_wk;
     }
 
     initSchedule(); renderServices();
