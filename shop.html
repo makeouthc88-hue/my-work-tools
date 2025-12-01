@@ -122,7 +122,7 @@
         .btn-green { background: #28a745; }
         .btn-red { background: #dc3545; }
 
-        /* --- CodeSage 新增: 編輯樣式與手動高亮 --- */
+        /* --- CodeSage 新增/優化: 編輯樣式與手動高亮 --- */
         .editable-cell {
             cursor: text;
             transition: background 0.2s;
@@ -344,45 +344,424 @@
         if(tabId === 'schedule') setTimeout(() => { renderScheduleAll(); }, 50);
         if(tabId === 'settle') renderSettlementTable();
     }
-    function resetSchedule() { if(confirm("確定清空？")) { staffData = [{ id: Date.now(), name: "新人員", content: "", height: null, taskStatuses: {} }]; saveScheduleData(); } }
-    function addStaff() { staffData.push({ id: Date.now(), name: "新", content: "", height: null, taskStatuses: {} }); saveScheduleData(); renderScheduleAll(); }
-    function removeStaff(id) { if(confirm("刪除此人？")) { staffData = staffData.filter(s => s.id !== id); saveScheduleData(); renderScheduleAll(); } }
-    function updateStaffName(id, newName) { staffData = staffData.map(staff => staff.id === id ? { ...staff, name: newName } : staff); saveScheduleData(); }
-    function openEditModal(staffId) { const staff = staffData.find(s => s.id === staffId); if (!staff) return; currentEditingStaffId = staffId; document.getElementById('modalTextarea').value = staff.content; document.getElementById('editModal').classList.add('active'); document.getElementById('modalTextarea').focus(); }
-    function closeEditModal() { document.getElementById('editModal').classList.remove('active'); currentEditingStaffId = null; }
-    function saveModalData() { if (!currentEditingStaffId) return; const newContent = document.getElementById('modalTextarea').value; staffData = staffData.map(staff => staff.id === currentEditingStaffId ? { ...staff, content: newContent } : staff); saveScheduleData(); renderScheduleAll(); closeEditModal(); }
+    function resetSchedule() { 
+        if(confirm("確定清空？")) { 
+            staffData = [{ id: Date.now(), name: "新人員", content: "", height: null, taskStatuses: {}, overrides: {} }]; 
+            saveScheduleData(); 
+        } 
+    }
+    function addStaff() { 
+        staffData.push({ id: Date.now(), name: "新", content: "", height: null, taskStatuses: {}, overrides: {} }); 
+        saveScheduleData(); 
+        renderScheduleAll(); 
+    }
+    function removeStaff(id) { 
+        if(confirm("刪除此人？")) { 
+            staffData = staffData.filter(s => s.id !== id); 
+            saveScheduleData(); 
+            renderScheduleAll(); 
+        } 
+    }
+    function updateStaffName(id, newName) { 
+        staffData = staffData.map(staff => staff.id === id ? { ...staff, name: newName } : staff); 
+        saveScheduleData(); 
+    }
+    function openEditModal(staffId) { 
+        const staff = staffData.find(s => s.id === staffId); 
+        if (!staff) return; 
+        currentEditingStaffId = staffId; 
+        document.getElementById('modalTextarea').value = staff.content; 
+        document.getElementById('editModal').classList.add('active'); 
+        document.getElementById('modalTextarea').focus(); 
+    }
+    function closeEditModal() { 
+        document.getElementById('editModal').classList.remove('active'); 
+        currentEditingStaffId = null; 
+    }
+
+    // [CodeSage 優化]: 儲存班表時，自動清除手動覆蓋數據
+    function saveModalData() { 
+        if (!currentEditingStaffId) return; 
+        const newContent = document.getElementById('modalTextarea').value; 
+        
+        staffData = staffData.map(staff => {
+            if (staff.id === currentEditingStaffId) {
+                // 貼上新的班表內容時，重置所有日結覆寫數據
+                return { 
+                    ...staff, 
+                    content: newContent,
+                    overrides: {} // 關鍵: 清空手動覆蓋數據，確保公式重跑
+                };
+            }
+            return staff;
+        });
+
+        saveScheduleData(); 
+        renderScheduleAll(); 
+        closeEditModal(); 
+    }
     
     // 拖曳
-    const colResizer = document.getElementById('colResizer'); const leftPanel = document.getElementById('leftPanel');
-    let isColDragging = false; let colStartX, colStartWidth;
-    colResizer.addEventListener('mousedown', (e) => { isColDragging = true; colStartX = e.clientX; colStartWidth = parseInt(window.getComputedStyle(leftPanel).width, 10); document.body.style.cursor = 'col-resize'; });
-    document.addEventListener('mousemove', (e) => { if (isColDragging) { e.preventDefault(); leftPanel.style.width = (colStartWidth + (e.clientX - colStartX)) + 'px'; } });
-    document.addEventListener('mouseup', () => { isColDragging = false; document.body.style.cursor = 'default'; });
+    const colResizer = document.getElementById('colResizer'); 
+    const leftPanel = document.getElementById('leftPanel');
+    let isColDragging = false; 
+    let colStartX, colStartWidth;
+    
+    colResizer.addEventListener('mousedown', (e) => { 
+        isColDragging = true; 
+        colStartX = e.clientX; 
+        colStartWidth = parseInt(window.getComputedStyle(leftPanel).width, 10); 
+        document.body.style.cursor = 'col-resize'; 
+    });
+    document.addEventListener('mousemove', (e) => { 
+        if (isColDragging) { 
+            e.preventDefault(); 
+            leftPanel.style.width = (colStartWidth + (e.clientX - colStartX)) + 'px'; 
+        } 
+    });
+    document.addEventListener('mouseup', () => { 
+        isColDragging = false; 
+        document.body.style.cursor = 'default'; 
+    });
 
     // === 5. 排班渲染 ===
-    function getTaskHash(rawText, startMinutes) { const safeText = rawText.replace(/[^a-zA-Z0-9]/g, '').substring(0, 15); return `T${startMinutes}_${safeText}`; }
-    function renderScheduleAll() { renderSidebar(); requestAnimationFrame(renderTracksOnly); }
-    function renderSidebar() { leftContent.innerHTML = ''; staffData.forEach((staff, index) => { const div = document.createElement('div'); div.className = 'staff-card'; div.dataset.staffId = staff.id; if (staff.height) div.style.height = staff.height + 'px'; div.innerHTML = `<div class="staff-header"><div class="idx-badge">${index + 1}</div><input class="staff-name" value="${staff.name}" onchange="updateStaffName(${staff.id}, this.value)"><button class="btn-delete" onclick="removeStaff(${staff.id})">×</button></div><div class="schedule-text-display" onclick="openEditModal(${staff.id})">${staff.content || '<span style="color:#ccc">編輯...</span>'}</div><div class="row-resizer"></div>`; leftContent.appendChild(div); }); }
-    function renderTracksOnly() { const openH = parseInt(document.getElementById('openHour').value) || 12; const closeH = parseInt(document.getElementById('closeHour').value) || 29; const startOfDay = openH * 60; const totalWidth = (closeH * 60 - startOfDay) * PX_PER_MIN; if (totalWidth <= 0) return; document.getElementById('ruler').style.width = totalWidth + 'px'; document.getElementById('trackContainer').style.width = totalWidth + 'px'; document.getElementById('gridBg').style.width = totalWidth + 'px'; const ruler = document.getElementById('ruler'); const gridBg = document.getElementById('gridBg'); ruler.innerHTML = ''; const gridBgContent = []; for (let h = openH; h <= closeH; h++) { let left = (h * 60 - startOfDay) * PX_PER_MIN; let displayH = h >= 24 ? h - 24 : h; ruler.innerHTML += `<div class="hour-mark" style="left:${left}px;">${displayH}</div>`; gridBgContent.push(`<div class="v-line" style="left:${left}px;"></div>`); } gridBg.innerHTML = gridBgContent.join(''); const container = document.getElementById('trackContainer'); container.innerHTML = `<div class="grid-lines" id="gridBg" style="width: ${totalWidth}px;">${gridBg.innerHTML}</div><div id="currentTimeLine" class="current-time-line"></div>`; staffData.forEach(staff => { const trackDiv = document.createElement('div'); trackDiv.className = 'track-row'; trackDiv.id = `track-${staff.id}`; container.appendChild(trackDiv); const staffCard = document.querySelector(`.staff-card[data-staff-id="${staff.id}"]`); if (staff.height) { trackDiv.style.height = staff.height + 'px'; } else if (staffCard) { trackDiv.style.height = staffCard.offsetHeight + 'px'; } renderSingleTrack(trackDiv, staff.content, staff.id, startOfDay, closeH * 60); }); updateTimeLineAndClock(); }
-    function renderSingleTrack(container, content, staffId, startOfDay, endOfDay) { container.innerHTML = ''; const staff = staffData.find(s => s.id === staffId); const taskStatuses = staff.taskStatuses || {}; const lines = content.trim().split('\n'); const tasks = []; lines.forEach(line => { const trimmedLine = line.trim(); if (!trimmedLine) return; if (/^[\d./-]+\s*(?:\([A-Za-z]+\))?$/.test(trimmedLine) && trimmedLine.length < 12) return; const match = trimmedLine.match(/([\d.:]+)\s*(\d+.*)/) || trimmedLine.match(/(\D+)\s*([\d.:]+)\s*(\d+.*)/); if (match) { let timeStr, detailStr; if (match.length === 3) { timeStr = match[1]; detailStr = match[2]; } else { timeStr = match[2]; detailStr = match[3]; } let duration = 60; const numMatch = detailStr.match(/^(\d+)/); if (numMatch) duration = parseInt(numMatch[1]); const startTime = parseTime(timeStr); const endTime = startTime + duration; if (startTime !== null) { const scheduledStart = formatTime(startTime); const scheduledEnd = formatTime(endTime); const taskId = getTaskHash(trimmedLine, startTime); const status = taskStatuses[taskId] || {}; tasks.push({ start: startTime, end: endTime, rawText: trimmedLine, conflict: false, staffId, taskId, scheduledStart, scheduledEnd, inTime: status.inTime || '', outTime: status.outTime || '' }); } } }); tasks.sort((a, b) => a.start - b.start); for (let i = 0; i < tasks.length; i++) { for (let j = i + 1; j < tasks.length; j++) { if (tasks[i].end > tasks[j].start) { tasks[i].conflict = true; tasks[j].conflict = true; } else { break; } } } let currentCursor = startOfDay; tasks.forEach(task => { if (task.start > currentCursor) { let gap = task.start - currentCursor; if (gap >= 10) { let startStr = formatTime(currentCursor); let endStr = formatTime(task.start); let durationStr = formatDuration(gap); let label = `<b>${durationStr}</b><div style="font-size:10px; margin-top:1px;">${startStr}-${endStr}</div>`; createBlock(container, currentCursor, task.start, startOfDay, 'free', label); } } let type = task.conflict ? 'conflict' : 'work'; createBlock(container, task.start, task.end, startOfDay, type, task.rawText, task.staffId, task.taskId, task.scheduledStart, task.scheduledEnd, task.inTime, task.outTime); if (task.end > currentCursor) currentCursor = task.end; }); }
-    function parseTime(timeStr) { if (!timeStr) return null; timeStr = timeStr.replace('.', ':'); let parts = timeStr.split(':'); let h = 0, m = 0; if (parts.length === 2) { h = parseInt(parts[0]); m = parseInt(parts[1]); } else if (timeStr.length === 4) { h = parseInt(timeStr.substring(0, 2)); m = parseInt(timeStr.substring(2, 4)); } else { h = parseInt(timeStr); } if (isNaN(h)) return null; if (h < 11) h += 24; return h * 60 + m; }
-    function formatTime(minutes) { let h = Math.floor(minutes / 60); let m = minutes % 60; return (h < 10 ? "0"+h : h) + ":" + (m < 10 ? "0"+m : m); }
-    function formatDuration(mins) { let h = Math.floor(mins / 60); let m = mins % 60; return (h > 0 ? h + "h" : "") + (m > 0 ? m + "m" : ""); }
-    function createBlock(container, start, end, offsetStart, type, content, staffId, taskId, scheduledStart, scheduledEnd, inTime, outTime) { if (end <= start) return; const left = (start - offsetStart) * PX_PER_MIN; const width = (end - start) * PX_PER_MIN; const div = document.createElement('div'); div.className = `block type-${type}`; div.style.left = left + 'px'; div.style.width = Math.max(width - 2, 2) + 'px'; if (type === 'free') { div.innerHTML = content; } else { div.innerText = content; if (type === 'work') { div.onclick = function(e) { e.stopPropagation(); openTimeModal(div, staffId, taskId, content, scheduledStart, scheduledEnd); }; div.dataset.staffId = staffId; div.dataset.taskId = taskId; if(inTime) div.dataset.inTime = inTime; if(outTime) div.dataset.outTime = outTime; } } container.appendChild(div); }
-    function updateTimeLineAndClock() { const line = document.getElementById('currentTimeLine'); const topClock = document.getElementById('topClock'); const openH = parseInt(document.getElementById('openHour').value) || 12; const now = new Date(); let h = now.getHours(); let m = now.getMinutes(); let clockH = now.getHours(); if (clockH >= 0 && clockH < 11) clockH += 24; if(topClock) topClock.innerText = `${(clockH<10?"0"+clockH:clockH)}:${(m<10?"0"+m:m)}`; if (h < 11) h += 24; const offsetMins = (h * 60 + m) - openH * 60; if (offsetMins >= 0 && line) { line.style.display = 'block'; line.style.left = (offsetMins * PX_PER_MIN) + 'px'; } else if (line) { line.style.display = 'none'; } }
+    function getTaskHash(rawText, startMinutes) { 
+        const safeText = rawText.replace(/[^a-zA-Z0-9]/g, '').substring(0, 15); 
+        return `T${startMinutes}_${safeText}`; 
+    }
+    function renderScheduleAll() { 
+        renderSidebar(); 
+        requestAnimationFrame(renderTracksOnly); 
+    }
+    function renderSidebar() { 
+        leftContent.innerHTML = ''; 
+        staffData.forEach((staff, index) => { 
+            const div = document.createElement('div'); 
+            div.className = 'staff-card'; 
+            div.dataset.staffId = staff.id; 
+            if (staff.height) div.style.height = staff.height + 'px'; 
+            div.innerHTML = `<div class="staff-header"><div class="idx-badge">${index + 1}</div><input class="staff-name" value="${staff.name}" onchange="updateStaffName(${staff.id}, this.value)"><button class="btn-delete" onclick="removeStaff(${staff.id})">×</button></div><div class="schedule-text-display" onclick="openEditModal(${staff.id})">${staff.content || '<span style="color:#ccc">編輯...</span>'}</div><div class="row-resizer"></div>`; 
+            leftContent.appendChild(div); 
+        }); 
+    }
+    function renderTracksOnly() { 
+        const openH = parseInt(document.getElementById('openHour').value) || 12; 
+        const closeH = parseInt(document.getElementById('closeHour').value) || 29; 
+        const startOfDay = openH * 60; 
+        const totalWidth = (closeH * 60 - startOfDay) * PX_PER_MIN; 
+        if (totalWidth <= 0) return; 
+        
+        document.getElementById('ruler').style.width = totalWidth + 'px'; 
+        document.getElementById('trackContainer').style.width = totalWidth + 'px'; 
+        document.getElementById('gridBg').style.width = totalWidth + 'px'; 
+        
+        const ruler = document.getElementById('ruler'); 
+        const gridBg = document.getElementById('gridBg'); 
+        ruler.innerHTML = ''; 
+        const gridBgContent = []; 
+        
+        for (let h = openH; h <= closeH; h++) { 
+            let left = (h * 60 - startOfDay) * PX_PER_MIN; 
+            let displayH = h >= 24 ? h - 24 : h; 
+            ruler.innerHTML += `<div class="hour-mark" style="left:${left}px;">${displayH}</div>`; 
+            gridBgContent.push(`<div class="v-line" style="left:${left}px;"></div>`); 
+        } 
+        
+        gridBg.innerHTML = gridBgContent.join(''); 
+        
+        const container = document.getElementById('trackContainer'); 
+        // 重新構建 trackContainer 內容，確保 gridBg 和 currentTimeLine 被正確保留
+        container.innerHTML = `<div class="grid-lines" id="gridBg" style="width: ${totalWidth}px;">${gridBg.innerHTML}</div><div id="currentTimeLine" class="current-time-line"></div>`; 
+        
+        staffData.forEach(staff => { 
+            const trackDiv = document.createElement('div'); 
+            trackDiv.className = 'track-row'; 
+            trackDiv.id = `track-${staff.id}`; 
+            container.appendChild(trackDiv); 
+            
+            const staffCard = document.querySelector(`.staff-card[data-staff-id="${staff.id}"]`); 
+            if (staff.height) { 
+                trackDiv.style.height = staff.height + 'px'; 
+            } else if (staffCard) { 
+                trackDiv.style.height = staffCard.offsetHeight + 'px'; 
+            } 
+            renderSingleTrack(trackDiv, staff.content, staff.id, startOfDay, closeH * 60); 
+        }); 
+        updateTimeLineAndClock(); 
+    }
+    function renderSingleTrack(container, content, staffId, startOfDay, endOfDay) { 
+        container.innerHTML = ''; 
+        const staff = staffData.find(s => s.id === staffId); 
+        const taskStatuses = staff.taskStatuses || {}; 
+        const lines = content.trim().split('\n'); 
+        const tasks = []; 
+        
+        lines.forEach(line => { 
+            const trimmedLine = line.trim(); 
+            if (!trimmedLine) return; 
+            if (/^[\d./-]+\s*(?:\([A-Za-z]+\))?$/.test(trimmedLine) && trimmedLine.length < 12) return; 
+            
+            const match = trimmedLine.match(/([\d.:]+)\s*(\d+.*)/) || trimmedLine.match(/(\D+)\s*([\d.:]+)\s*(\d+.*)/); 
+            
+            if (match) { 
+                let timeStr, detailStr; 
+                if (match.length === 3) { 
+                    timeStr = match[1]; detailStr = match[2]; 
+                } else { 
+                    timeStr = match[2]; detailStr = match[3]; 
+                } 
+                
+                let duration = 60; 
+                const numMatch = detailStr.match(/^(\d+)/); 
+                if (numMatch) duration = parseInt(numMatch[1]); 
+                
+                const startTime = parseTime(timeStr); 
+                const endTime = startTime + duration; 
+                
+                if (startTime !== null) { 
+                    const scheduledStart = formatTime(startTime); 
+                    const scheduledEnd = formatTime(endTime); 
+                    const taskId = getTaskHash(trimmedLine, startTime); 
+                    const status = taskStatuses[taskId] || {}; 
+                    
+                    tasks.push({ 
+                        start: startTime, end: endTime, rawText: trimmedLine, conflict: false, staffId, taskId, scheduledStart, scheduledEnd, 
+                        inTime: status.inTime || '', 
+                        outTime: status.outTime || '' 
+                    }); 
+                } 
+            } 
+        }); 
+        
+        tasks.sort((a, b) => a.start - b.start); 
+        
+        // 衝突檢測
+        for (let i = 0; i < tasks.length; i++) { 
+            for (let j = i + 1; j < tasks.length; j++) { 
+                if (tasks[i].end > tasks[j].start) { 
+                    tasks[i].conflict = true; 
+                    tasks[j].conflict = true; 
+                } else { 
+                    break; 
+                } 
+            } 
+        } 
+        
+        let currentCursor = startOfDay; 
+        tasks.forEach(task => { 
+            // 渲染空檔 (Free)
+            if (task.start > currentCursor) { 
+                let gap = task.start - currentCursor; 
+                if (gap >= 10) { 
+                    let startStr = formatTime(currentCursor); 
+                    let endStr = formatTime(task.start); 
+                    let durationStr = formatDuration(gap); 
+                    let label = `<b>${durationStr}</b><div style="font-size:10px; margin-top:1px;">${startStr}-${endStr}</div>`; 
+                    createBlock(container, currentCursor, task.start, startOfDay, 'free', label); 
+                } 
+            } 
+            
+            // 渲染服務 (Work/Conflict)
+            let type = task.conflict ? 'conflict' : 'work'; 
+            createBlock(container, task.start, task.end, startOfDay, type, task.rawText, task.staffId, task.taskId, task.scheduledStart, task.scheduledEnd, task.inTime, task.outTime); 
+            
+            if (task.end > currentCursor) currentCursor = task.end; 
+        }); 
+    }
+    function parseTime(timeStr) { 
+        if (!timeStr) return null; 
+        timeStr = timeStr.replace('.', ':'); 
+        let parts = timeStr.split(':'); 
+        let h = 0, m = 0; 
+        
+        if (parts.length === 2) { 
+            h = parseInt(parts[0]); 
+            m = parseInt(parts[1]); 
+        } else if (timeStr.length === 4) { 
+            h = parseInt(timeStr.substring(0, 2)); 
+            m = parseInt(timeStr.substring(2, 4)); 
+        } else { 
+            h = parseInt(timeStr); 
+        } 
+        
+        if (isNaN(h)) return null; 
+        if (h < 11) h += 24; 
+        return h * 60 + m; 
+    }
+    function formatTime(minutes) { 
+        let h = Math.floor(minutes / 60); 
+        let m = minutes % 60; 
+        return (h < 10 ? "0"+h : h) + ":" + (m < 10 ? "0"+m : m); 
+    }
+    function formatDuration(mins) { 
+        let h = Math.floor(mins / 60); 
+        let m = mins % 60; 
+        return (h > 0 ? h + "h" : "") + (m > 0 ? m + "m" : ""); 
+    }
+    function createBlock(container, start, end, offsetStart, type, content, staffId, taskId, scheduledStart, scheduledEnd, inTime, outTime) { 
+        if (end <= start) return; 
+        const left = (start - offsetStart) * PX_PER_MIN; 
+        const width = (end - start) * PX_PER_MIN; 
+        const div = document.createElement('div'); 
+        div.className = `block type-${type}`; 
+        div.style.left = left + 'px'; 
+        div.style.width = Math.max(width - 2, 2) + 'px'; 
+        
+        if (type === 'free') { 
+            div.innerHTML = content; 
+        } else { 
+            div.innerText = content; 
+            if (type === 'work') { 
+                div.onclick = function(e) { 
+                    e.stopPropagation(); 
+                    openTimeModal(div, staffId, taskId, content, scheduledStart, scheduledEnd); 
+                }; 
+                div.dataset.staffId = staffId; 
+                div.dataset.taskId = taskId; 
+                if(inTime) div.dataset.inTime = inTime; 
+                if(outTime) div.dataset.outTime = outTime; 
+            } 
+        } 
+        container.appendChild(div); 
+    }
+    function updateTimeLineAndClock() { 
+        const line = document.getElementById('currentTimeLine'); 
+        const topClock = document.getElementById('topClock'); 
+        const openH = parseInt(document.getElementById('openHour').value) || 12; 
+        const now = new Date(); 
+        let h = now.getHours(); 
+        let m = now.getMinutes(); 
+        let clockH = now.getHours(); 
+        
+        if (clockH >= 0 && clockH < 11) clockH += 24; 
+        if(topClock) topClock.innerText = `${(clockH<10?"0"+clockH:clockH)}:${(m<10?"0"+m:m)}`; 
+        
+        if (h < 11) h += 24; 
+        const offsetMins = (h * 60 + m) - openH * 60; 
+        
+        if (offsetMins >= 0 && line) { 
+            line.style.display = 'block'; 
+            line.style.left = (offsetMins * PX_PER_MIN) + 'px'; 
+        } else if (line) { 
+            line.style.display = 'none'; 
+        } 
+    }
     
     // Modal Functions
-    function openTimeModal(element, staffId, taskId, content, scheduledStart, scheduledEnd) { currentTaskElement = element; currentTaskInfo = { staffId, taskId }; document.getElementById('timeModalTitle').innerText = `記錄服務時間: ${content.substring(0, 20)}...`; document.getElementById('scheduledTime').innerText = `${scheduledStart} - ${scheduledEnd}`; document.getElementById('inTimeInput').value = currentTaskElement.dataset.inTime || ''; document.getElementById('outTimeInput').value = currentTaskElement.dataset.outTime || ''; document.getElementById('timeModal').classList.add('active'); }
-    function closeTimeModal() { document.getElementById('timeModal').classList.remove('active'); currentTaskElement = null; currentTaskInfo = null; }
-    function fillCurrentTime(type) { const now = new Date(); let h = now.getHours(); if (h >= 0 && h < 11) h += 24; let m = now.getMinutes(); const t = `${h < 10 ? "0"+h : h}:${m < 10 ? "0"+m : m}`; document.getElementById(type === 'in' ? 'inTimeInput' : 'outTimeInput').value = t; }
-    function saveManualTime() { if (!currentTaskElement || !currentTaskInfo) return; const { staffId, taskId } = currentTaskInfo; const newInTime = document.getElementById('inTimeInput').value.trim(); const newOutTime = document.getElementById('outTimeInput').value.trim(); const timeRegex = /^\d{2}:\d{2}$/; if ((newInTime && !timeRegex.test(newInTime)) || (newOutTime && !timeRegex.test(newOutTime))) { alert("格式錯誤 HH:MM"); return; } staffData = staffData.map(staff => { if (staff.id === staffId) { const updatedTaskStatus = {}; if (newInTime) updatedTaskStatus.inTime = newInTime; if (newOutTime) updatedTaskStatus.outTime = newOutTime; return { ...staff, taskStatuses: { ...(staff.taskStatuses || {}), [taskId]: updatedTaskStatus } }; } return staff; }); saveScheduleData(); if (newInTime) currentTaskElement.dataset.inTime = newInTime; else delete currentTaskElement.dataset.inTime; if (newOutTime) currentTaskElement.dataset.outTime = newOutTime; else delete currentTaskElement.dataset.outTime; closeTimeModal(); }
-    function clearManualTime() { if (!currentTaskElement || !currentTaskInfo) return; const { staffId, taskId } = currentTaskInfo; staffData = staffData.map(staff => { if (staff.id === staffId) { const updatedTaskStatuses = { ...(staff.taskStatuses || {}) }; delete updatedTaskStatuses[taskId]; return { ...staff, taskStatuses: updatedTaskStatuses }; } return staff; }); saveScheduleData(); delete currentTaskElement.dataset.inTime; delete currentTaskElement.dataset.outTime; document.getElementById('inTimeInput').value = ''; document.getElementById('outTimeInput').value = ''; closeTimeModal(); }
+    function openTimeModal(element, staffId, taskId, content, scheduledStart, scheduledEnd) { 
+        currentTaskElement = element; 
+        currentTaskInfo = { staffId, taskId }; 
+        document.getElementById('timeModalTitle').innerText = `記錄服務時間: ${content.substring(0, 20)}...`; 
+        document.getElementById('scheduledTime').innerText = `${scheduledStart} - ${scheduledEnd}`; 
+        document.getElementById('inTimeInput').value = currentTaskElement.dataset.inTime || ''; 
+        document.getElementById('outTimeInput').value = currentTaskElement.dataset.outTime || ''; 
+        document.getElementById('timeModal').classList.add('active'); 
+    }
+    function closeTimeModal() { 
+        document.getElementById('timeModal').classList.remove('active'); 
+        currentTaskElement = null; 
+        currentTaskInfo = null; 
+    }
+    function fillCurrentTime(type) { 
+        const now = new Date(); 
+        let h = now.getHours(); 
+        if (h >= 0 && h < 11) h += 24; 
+        let m = now.getMinutes(); 
+        const t = `${h < 10 ? "0"+h : h}:${m < 10 ? "0"+m : m}`; 
+        document.getElementById(type === 'in' ? 'inTimeInput' : 'outTimeInput').value = t; 
+    }
+    function saveManualTime() { 
+        if (!currentTaskElement || !currentTaskInfo) return; 
+        const { staffId, taskId } = currentTaskInfo; 
+        const newInTime = document.getElementById('inTimeInput').value.trim(); 
+        const newOutTime = document.getElementById('outTimeInput').value.trim(); 
+        const timeRegex = /^\d{2}:\d{2}$/; 
+        
+        if ((newInTime && !timeRegex.test(newInTime)) || (newOutTime && !timeRegex.test(newOutTime))) { 
+            alert("格式錯誤 HH:MM"); 
+            return; 
+        } 
+        
+        staffData = staffData.map(staff => { 
+            if (staff.id === staffId) { 
+                const updatedTaskStatus = {}; 
+                if (newInTime) updatedTaskStatus.inTime = newInTime; 
+                if (newOutTime) updatedTaskStatus.outTime = newOutTime; 
+                return { 
+                    ...staff, 
+                    taskStatuses: { 
+                        ...(staff.taskStatuses || {}), 
+                        [taskId]: updatedTaskStatus 
+                    } 
+                }; 
+            } 
+            return staff; 
+        }); 
+        
+        saveScheduleData(); 
+        
+        if (newInTime) currentTaskElement.dataset.inTime = newInTime; else delete currentTaskElement.dataset.inTime; 
+        if (newOutTime) currentTaskElement.dataset.outTime = newOutTime; else delete currentTaskElement.dataset.outTime; 
+        
+        closeTimeModal(); 
+    }
+    function clearManualTime() { 
+        if (!currentTaskElement || !currentTaskInfo) return; 
+        const { staffId, taskId } = currentTaskInfo; 
+        
+        staffData = staffData.map(staff => { 
+            if (staff.id === staffId) { 
+                const updatedTaskStatuses = { ...(staff.taskStatuses || {}) }; 
+                delete updatedTaskStatuses[taskId]; 
+                return { ...staff, taskStatuses: updatedTaskStatuses }; 
+            } 
+            return staff; 
+        }); 
+        
+        saveScheduleData(); 
+        
+        delete currentTaskElement.dataset.inTime; 
+        delete currentTaskElement.dataset.outTime; 
+        document.getElementById('inTimeInput').value = ''; 
+        document.getElementById('outTimeInput').value = ''; 
+        closeTimeModal(); 
+    }
 
-    // === 6. 日結核心 (CodeSage 重寫：支援手動覆蓋 + 阿姨自動公式連動) ===
-    function renderServices() { const container = document.getElementById('service_container'); container.innerHTML = ''; services.forEach((svc, index) => { const div = document.createElement('div'); div.className = 'service-row'; div.innerHTML = `<input type="text" value="${svc.name}" onchange="updateService(${index}, 'name', this.value)"><span>+</span><input type="number" value="${svc.price}" oninput="updateService(${index}, 'price', this.value)" step="100"><button class="btn-circle btn-red" style="width:18px; height:18px; font-size:12px;" onclick="removeService(${index})">×</button>`; container.appendChild(div); }); }
-    function updateService(index, field, value) { let finalValue = value; if(field === 'price') { const parsed = parseInt(value); finalValue = isNaN(parsed) ? services[index].price : parsed; if (value === "") finalValue = 0; } services = services.map((svc, i) => i === index ? { ...svc, [field]: finalValue } : svc); renderServices(); renderSettlementTable(); saveScheduleData(); }
-    function addServiceRow() { services.push({name: "新服務", price: 0}); renderServices(); renderSettlementTable(); saveScheduleData(); }
-    function removeService(index) { services = services.filter((_, i) => i !== index); renderServices(); renderSettlementTable(); saveScheduleData(); }
+    // === 6. 日結核心 (CodeSage 優化: 支援手動覆蓋 + 自動重跑公式) ===
+    function renderServices() { 
+        const container = document.getElementById('service_container'); 
+        container.innerHTML = ''; 
+        services.forEach((svc, index) => { 
+            const div = document.createElement('div'); 
+            div.className = 'service-row'; 
+            div.innerHTML = `<input type="text" value="${svc.name}" onchange="updateService(${index}, 'name', this.value)"><span>+</span><input type="number" value="${svc.price}" oninput="updateService(${index}, 'price', this.value)" step="100"><button class="btn-circle btn-red" style="width:18px; height:18px; font-size:12px;" onclick="removeService(${index})">×</button>`; 
+            container.appendChild(div); 
+        }); 
+    }
+    function updateService(index, field, value) { 
+        let finalValue = value; 
+        if(field === 'price') { 
+            const parsed = parseInt(value); 
+            finalValue = isNaN(parsed) ? services[index].price : parsed; 
+            if (value === "") finalValue = 0; 
+        } 
+        services = services.map((svc, i) => i === index ? { ...svc, [field]: finalValue } : svc); 
+        renderServices(); 
+        renderSettlementTable(); 
+        saveScheduleData(); 
+    }
+    function addServiceRow() { 
+        services.push({name: "新服務", price: 0}); 
+        renderServices(); 
+        renderSettlementTable(); 
+        saveScheduleData(); 
+    }
+    function removeService(index) { 
+        services = services.filter((_, i) => i !== index); 
+        renderServices(); 
+        renderSettlementTable(); 
+        saveScheduleData(); 
+    }
 
     function updateStaffSettlement(staffId, field, value) {
         staffData = staffData.map(s => {
@@ -397,10 +776,10 @@
         renderSettlementTable();
     }
 
-    // [CodeSage] 新增: 儲存手動修改
+    // [CodeSage] 儲存手動修改
     function saveOverride(staffId, lineIndex, field, element) {
         const value = element.innerText;
-        // 轉成整數，如果是空值或非數字則存為 0
+        // 轉成整數，如果是空值或非數字則存為 0 (允許負號)
         const numVal = parseInt(value.replace(/[^\d-]/g, '')) || 0;
         
         // 視覺上立即更新
@@ -425,12 +804,11 @@
         
         saveScheduleData();
         
-        // **重要**：因為欄位間有連動 (收 -> 阿姨)，
-        // 所以這裡必須觸發一次完整的 renderSettlementTable。
+        // 觸發一次完整的 renderSettlementTable 以更新總計
         setTimeout(renderSettlementTable, 50); 
     }
 
-    // [CodeSage] 修改: 核心計算邏輯
+    // [CodeSage] 核心計算邏輯，只負責計算「預設公式值」並應用覆蓋
     function calculateSettlement(staff, commTable, costTable, services) {
         const results = [];
         let totalWorks = 0; 
@@ -443,21 +821,18 @@
             const rawLine = line.trim();
             if (!rawLine) return;
             
-            // 1. 先抓取基礎參數
+            // 1. 先計算基礎公式參數 (預設值)
             const pattern = /(\d+)\/(\d+)-(\d+)/;
             const match = rawLine.match(pattern);
             
             let base_cost = 0;
             let base_comm = 0;
             let extra_money = 0;
-            let duration = 0;
             let revenue = 0; 
             let work = 0;    
-            let total_miss = 0; 
-            let isManual = false; 
 
             if (match) {
-                duration = parseInt(match[1]);
+                const duration = parseInt(match[1]);
                 revenue = parseInt(match[2]); 
                 const count = parseInt(match[3]);
                 const key = `${duration}-${count}`;
@@ -466,26 +841,17 @@
                 base_cost = costTable[key] || 0; 
                 work = WORK_UNIT_TABLE[duration] || 0; 
 
-                services.forEach(svc => { if (rawLine.toLowerCase().includes(svc.name.toLowerCase())) extra_money += svc.price; });
-                
-                total_miss = base_comm + extra_money; 
-            } else {
-                isManual = true; 
+                // 計算加值服務費用
+                services.forEach(svc => { 
+                    if (rawLine.toLowerCase().includes(svc.name.toLowerCase())) {
+                        extra_money += svc.price; 
+                    }
+                });
             }
-
-            // 2. [關鍵] 檢查手動覆蓋 (Overrides) - 優先權高於公式
-            const o = overrides[index] || {};
-            const isRevenueOverridden = o.revenue !== undefined;
-            const isMissOverridden = o.total_miss !== undefined;
-            const isWorkOverridden = o.work !== undefined;
-            const isAuntOverridden = o.aunt_disp !== undefined; // [新增] 阿姨是否被覆蓋
-
-            if (isRevenueOverridden) revenue = o.revenue;
-            if (isMissOverridden) total_miss = o.total_miss;
-            if (isWorkOverridden) work = o.work;
-
-            // 3. [關鍵] 阿姨公式計算
-            // 先算公式值
+            
+            let total_miss = base_comm + extra_money; 
+            
+            // 阿姨公式計算 (基於成本與額外服務)
             let aunt_inc = revenue - base_cost - extra_money;
             let realName = staff.name;
             const nameMatch = rawLine.match(/^([^\d\s]+)/);
@@ -493,21 +859,40 @@
             if (AUNT_EXTRA_NAMES.includes(realName)) aunt_inc += 100;
             let aunt_disp = Math.floor(aunt_inc / 100);
 
-            // 如果有手動覆蓋，就用手動的值，不管公式
-            if (isAuntOverridden) aunt_disp = o.aunt_disp;
+            // 2. 獲取手動覆蓋值 (Overrides)
+            const o = overrides[index] || {};
 
-            // 4. 計算結餘
-            let balance = revenue - total_miss;
+            // 3. 確定最終用於顯示和總計的值 (覆蓋邏輯)
+            const finalRevenue = o.revenue !== undefined ? o.revenue : revenue;
+            const finalTotalMiss = o.total_miss !== undefined ? o.total_miss : total_miss;
+            const finalAuntDisp = o.aunt_disp !== undefined ? o.aunt_disp : aunt_disp;
+            const finalWork = o.work !== undefined ? o.work : work;
+            
+            // 4. 計算最終結餘 (必須使用 finalRevenue - finalTotalMiss)
+            const finalBalance = finalRevenue - finalTotalMiss;
 
-            totalWorks += work;
+            totalWorks += finalWork; // 總工數應使用最終工數
+
             results.push({ 
-                rawLine, isManual, 
-                revenue, total_miss, aunt_disp, balance, work, index,
-                isRevenueOverridden, isMissOverridden, isWorkOverridden, isAuntOverridden // 傳給 UI
+                rawLine, index,
+                
+                // 儲存最終顯示值 (含覆蓋)
+                revenue: finalRevenue, 
+                total_miss: finalTotalMiss, 
+                aunt_disp: finalAuntDisp, 
+                balance: finalBalance, 
+                work: finalWork,
+
+                // 檢查是否被覆蓋 (用於 UI 樣式)
+                isRevenueOverridden: o.revenue !== undefined,
+                isMissOverridden: o.total_miss !== undefined, 
+                isAuntOverridden: o.aunt_disp !== undefined,
+                isWorkOverridden: o.work !== undefined, 
             });
         });
         return { results, totalWorks };
     }
+
 
     // 處理表格內編輯 (更新 DOM 計算)
     function onCellEdit(cell) { updateTotalsFromDOM(); }
@@ -525,7 +910,7 @@
             let card_total_work = 0; 
             
             // 遍歷該卡片所有資料行
-            card.querySelectorAll('tbody tr:not([style*="background"])').forEach(row => {
+            card.querySelectorAll('tbody tr:not(.footer-total)').forEach(row => { 
                 const getVal = (cls) => parseInt(row.querySelector(cls)?.innerText.replace(/[^\d-]/g,'') || 0);
                 
                 const r_rev = getVal('.col-rev');
@@ -571,7 +956,9 @@
             // 經紀費計算
             const agentName = card.dataset.agentName;
             const agentRate = parseInt(card.dataset.agentRate || 300);
-            const staffAgentFee = card_total_work * agentRate; 
+            // 使用 footer 總計的工數來計算經紀費
+            const totalWorksFromFooter = parseInt(footerCells[5].innerText.replace(/[^\d-]/g,'') || 0);
+            const staffAgentFee = totalWorksFromFooter * agentRate; 
 
             const feeDisplay = card.querySelector('.agent-fee-display');
             if(feeDisplay) feeDisplay.innerText = `費用: $${staffAgentFee}`;
@@ -607,11 +994,13 @@
         staffData.forEach((staff) => {
             if (!staff.content.trim()) return; 
 
+            // 關鍵：每次都重新計算公式預設值，並應用覆蓋
             const { results, totalWorks } = calculateSettlement(staff, commTable, costTable, services);
+            
             const agentName = staff.agentName || ''; 
             const agentRate = staff.agentRate !== undefined ? staff.agentRate : 300; 
             const manualExpense = staff.manualExpense !== undefined ? staff.manualExpense : 0; 
-            const staffAgentFee = totalWorks * agentRate;
+            const staffAgentFee = totalWorks * agentRate; // 這裡的 totalWorks 是應用覆蓋後的總工數
 
             const card = document.createElement('div');
             card.className = 'staff-card-settle';
@@ -650,25 +1039,32 @@
             `;
 
             results.forEach(row => {
+                // 判斷是否為手動修改，決定是否使用 manual-text 樣式
+                const auntClass = row.isAuntOverridden ? 'manual-text' : '';
+                const revClass = row.isRevenueOverridden ? 'manual-text' : '';
+                const missClass = row.isMissOverridden ? 'manual-text' : '';
+                const workClass = row.isWorkOverridden ? 'manual-text' : '';
+
+                // 使用應用覆蓋後的 final 值 (row.revenue/total_miss/aunt_disp/work/balance)
                 headerHtml += `
                     <tr style="border-bottom:1px solid #eee;">
-                        <td style="padding:5px; color:${row.isManual ? '#e74c3c' : '#333'};">${row.rawLine}</td>
+                        <td style="padding:5px;">${row.rawLine}</td>
                         
-                        <td class="col-aunt editable-cell ${row.isAuntOverridden ? 'manual-text' : ''}" contenteditable="true"
+                        <td class="col-aunt editable-cell ${auntClass}" contenteditable="true"
                             onblur="saveOverride(${staff.id}, ${row.index}, 'aunt_disp', this)"
                             style="text-align:center; font-weight:bold; color:#2980b9; background:#f9f9f9;">${row.aunt_disp}</td>
                         
-                        <td class="col-rev editable-cell ${row.isRevenueOverridden ? 'manual-text' : ''}" contenteditable="true"
+                        <td class="col-rev editable-cell ${revClass}" contenteditable="true"
                             onblur="saveOverride(${staff.id}, ${row.index}, 'revenue', this)"
                             style="text-align:center; color:#27ae60; background:#f9f9f9;">${row.revenue}</td>
                         
-                        <td class="col-miss editable-cell ${row.isMissOverridden ? 'manual-text' : ''}" contenteditable="true"
+                        <td class="col-miss editable-cell ${missClass}" contenteditable="true"
                             onblur="saveOverride(${staff.id}, ${row.index}, 'total_miss', this)"
                             style="text-align:center; color:#c0392b; background:#f9f9f9;">${row.total_miss}</td>
                         
                         <td class="col-bal" style="text-align:center; color:#555;">${row.balance}</td>
                         
-                        <td class="col-work editable-cell ${row.isWorkOverridden ? 'manual-text' : ''}" contenteditable="true"
+                        <td class="col-work editable-cell ${workClass}" contenteditable="true"
                             onblur="saveOverride(${staff.id}, ${row.index}, 'work', this)"
                             style="text-align:center; color:#d35400; font-weight:bold; background:#f9f9f9;">${row.work}</td>
                     </tr>
@@ -704,7 +1100,8 @@
         updateTotalsFromDOM();
     }
 
-    initSchedule(); renderServices();
+    initSchedule(); 
+    renderServices();
 </script>
 </body>
 </html>
