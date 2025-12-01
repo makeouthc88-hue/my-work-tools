@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>全能門店管理 (工數入表版)</title>
+    <title>全能門店管理 (完全自由編輯版)</title>
     
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -18,6 +18,7 @@
             --safe-top: env(safe-area-inset-top); 
             --in-out-color: #2ecc71; 
             --conflict-color: #e74c3c; 
+            --manual-highlight: #8e44ad; /* 手動修改專用色 (紫色) */
         }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif; background-color: var(--bg-light); margin: 0; padding: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; padding-top: var(--safe-top); }
@@ -120,12 +121,34 @@
         .btn-circle { border-radius: 50%; width: 24px; height: 24px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border: none; color: white; font-weight: bold; font-size: 16px; }
         .btn-green { background: #28a745; }
         .btn-red { background: #dc3545; }
+
+        /* --- CodeSage 新增: 編輯樣式與手動高亮 --- */
+        .editable-cell {
+            cursor: text;
+            transition: background 0.2s;
+        }
+        .editable-cell:hover {
+            background-color: #fff3cd !important;
+            outline: 1px dashed #aaa;
+        }
+        .editable-cell:focus {
+            background-color: #ffffff !important;
+            outline: 2px solid #3498db;
+            z-index: 10;
+            position: relative;
+            color: #000 !important;
+        }
+        /* 手動修改過的數字呈現紫色 (Purple) */
+        .manual-text {
+            color: var(--manual-highlight) !important;
+            font-weight: 800 !important;
+        }
     </style>
 </head>
 <body>
 
 <nav class="nav-bar">
-    <div class="app-title">🏢 門店管理(工數入表版) <span class="sync-dot" id="syncStatus"></span></div>
+    <div class="app-title">🏢 門店管理(Pro版) <span class="sync-dot" id="syncStatus"></span></div>
     <div class="nav-buttons">
         <button class="tab-btn active" onclick="switchTab('schedule')">排班</button>
         <button class="tab-btn" onclick="switchTab('settle')">日結</button>
@@ -253,7 +276,7 @@
     let staffData = [];
     let services = [ {name: "nocon", price: 1000}, {name: "口爆", price: 500} ];
     const WORK_UNIT_TABLE = {40: 1, 60: 1, 120: 2};
-    const AUNT_EXTRA_NAMES = ["顏同", "阿鳴", "曼達", "有菜", "姚貴"]; // 加碼 100 的名單
+    const AUNT_EXTRA_NAMES = ["顏同", "阿鳴", "曼達", "有菜", "姚貴"]; 
 
     let currentEditingStaffId = null; 
     let currentTaskElement = null; 
@@ -263,37 +286,35 @@
     const rulerContainer = document.getElementById('rulerContainer');
     const syncStatus = document.getElementById('syncStatus');
 
-    // === 3. Firebase 同步 (CodeSage 修復版) ===
+    // === 3. Firebase 同步 ===
     function initSchedule() {
         syncStatus.style.background = "orange";
         
         db.ref('shop_v7_data').on('value', (snapshot) => {
             const val = snapshot.val();
-            
-            // [CodeSage] 檢查使用者是否正在輸入，防止焦點丟失
             const activeEl = document.activeElement;
-            const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+            const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.getAttribute('contenteditable') === 'true');
 
             if (val) {
                 let rawStaffData = val.staffData || [];
                 if (!Array.isArray(rawStaffData) && typeof rawStaffData === 'object') rawStaffData = Object.values(rawStaffData);
                 
-                staffData = rawStaffData.map(s => ({ ...s, taskStatuses: s.taskStatuses || {} }));
+                staffData = rawStaffData.map(s => ({ 
+                    ...s, 
+                    taskStatuses: s.taskStatuses || {},
+                    overrides: s.overrides || {} 
+                }));
                 
-                // 如果沒在打字，才更新日期
                 if(val.date && !isTyping) document.getElementById('dateInput').value = val.date;
                 if(val.services) services = val.services;
 
-                // [CodeSage] 關鍵：如果正在打字，只更新時間軸，不重繪左側清單
                 if (!isTyping) {
                     renderScheduleAll();
+                    if (document.getElementById('view-settle').classList.contains('active')) {
+                        renderSettlementTable();
+                    }
                 } else {
-                    console.log("正在輸入中，略過全頁重繪...");
                     requestAnimationFrame(renderTracksOnly);
-                }
-
-                if (document.getElementById('view-settle').classList.contains('active') && !isTyping) {
-                    renderSettlementTable();
                 }
                 syncStatus.style.background = "#2ecc71";
             } else { 
@@ -357,7 +378,7 @@
     function saveManualTime() { if (!currentTaskElement || !currentTaskInfo) return; const { staffId, taskId } = currentTaskInfo; const newInTime = document.getElementById('inTimeInput').value.trim(); const newOutTime = document.getElementById('outTimeInput').value.trim(); const timeRegex = /^\d{2}:\d{2}$/; if ((newInTime && !timeRegex.test(newInTime)) || (newOutTime && !timeRegex.test(newOutTime))) { alert("格式錯誤 HH:MM"); return; } staffData = staffData.map(staff => { if (staff.id === staffId) { const updatedTaskStatus = {}; if (newInTime) updatedTaskStatus.inTime = newInTime; if (newOutTime) updatedTaskStatus.outTime = newOutTime; return { ...staff, taskStatuses: { ...(staff.taskStatuses || {}), [taskId]: updatedTaskStatus } }; } return staff; }); saveScheduleData(); if (newInTime) currentTaskElement.dataset.inTime = newInTime; else delete currentTaskElement.dataset.inTime; if (newOutTime) currentTaskElement.dataset.outTime = newOutTime; else delete currentTaskElement.dataset.outTime; closeTimeModal(); }
     function clearManualTime() { if (!currentTaskElement || !currentTaskInfo) return; const { staffId, taskId } = currentTaskInfo; staffData = staffData.map(staff => { if (staff.id === staffId) { const updatedTaskStatuses = { ...(staff.taskStatuses || {}) }; delete updatedTaskStatuses[taskId]; return { ...staff, taskStatuses: updatedTaskStatuses }; } return staff; }); saveScheduleData(); delete currentTaskElement.dataset.inTime; delete currentTaskElement.dataset.outTime; document.getElementById('inTimeInput').value = ''; document.getElementById('outTimeInput').value = ''; closeTimeModal(); }
 
-    // === 6. 日結核心 (公式修正 + 即時編輯 + 工數入表) ===
+    // === 6. 日結核心 (CodeSage 重寫：支援手動覆蓋 + 阿姨自動公式連動) ===
     function renderServices() { const container = document.getElementById('service_container'); container.innerHTML = ''; services.forEach((svc, index) => { const div = document.createElement('div'); div.className = 'service-row'; div.innerHTML = `<input type="text" value="${svc.name}" onchange="updateService(${index}, 'name', this.value)"><span>+</span><input type="number" value="${svc.price}" oninput="updateService(${index}, 'price', this.value)" step="100"><button class="btn-circle btn-red" style="width:18px; height:18px; font-size:12px;" onclick="removeService(${index})">×</button>`; container.appendChild(div); }); }
     function updateService(index, field, value) { let finalValue = value; if(field === 'price') { const parsed = parseInt(value); finalValue = isNaN(parsed) ? services[index].price : parsed; if (value === "") finalValue = 0; } services = services.map((svc, i) => i === index ? { ...svc, [field]: finalValue } : svc); renderServices(); renderSettlementTable(); saveScheduleData(); }
     function addServiceRow() { services.push({name: "新服務", price: 0}); renderServices(); renderSettlementTable(); saveScheduleData(); }
@@ -376,61 +397,121 @@
         renderSettlementTable();
     }
 
+    // [CodeSage] 新增: 儲存手動修改
+    function saveOverride(staffId, lineIndex, field, element) {
+        const value = element.innerText;
+        // 轉成整數，如果是空值或非數字則存為 0
+        const numVal = parseInt(value.replace(/[^\d-]/g, '')) || 0;
+        
+        // 視覺上立即更新
+        element.innerText = numVal; 
+        
+        // 加上手動顏色的 class (立即回饋)
+        element.classList.add('manual-text');
+        
+        // 更新資料結構
+        staffData = staffData.map(s => {
+            if (s.id === staffId) {
+                const currentOverrides = s.overrides || {};
+                if (!currentOverrides[lineIndex]) currentOverrides[lineIndex] = {};
+                
+                // 更新特定欄位
+                currentOverrides[lineIndex][field] = numVal;
+                
+                return { ...s, overrides: currentOverrides };
+            }
+            return s;
+        });
+        
+        saveScheduleData();
+        
+        // **重要**：因為欄位間有連動 (收 -> 阿姨)，
+        // 所以這裡必須觸發一次完整的 renderSettlementTable。
+        setTimeout(renderSettlementTable, 50); 
+    }
+
+    // [CodeSage] 修改: 核心計算邏輯
     function calculateSettlement(staff, commTable, costTable, services) {
         const results = [];
         let totalWorks = 0; 
         if (!staff.content.trim()) return { results, totalWorks };
+        
         const lines = staff.content.split('\n');
-        lines.forEach(line => {
+        const overrides = staff.overrides || {};
+
+        lines.forEach((line, index) => { 
             const rawLine = line.trim();
             if (!rawLine) return;
+            
+            // 1. 先抓取基礎參數
             const pattern = /(\d+)\/(\d+)-(\d+)/;
             const match = rawLine.match(pattern);
-            let extra_money = 0, base_comm = 0, revenue = 0, base_cost = 0, work = 0;
-            let total_miss = 0, aunt_inc = 0, aunt_disp = 0, balance = 0;
-            let isManual = false;
+            
+            let base_cost = 0;
+            let base_comm = 0;
+            let extra_money = 0;
+            let duration = 0;
+            let revenue = 0; 
+            let work = 0;    
+            let total_miss = 0; 
+            let isManual = false; 
 
             if (match) {
-                const duration = parseInt(match[1]), rev = parseInt(match[2]), count = parseInt(match[3]);
+                duration = parseInt(match[1]);
+                revenue = parseInt(match[2]); 
+                const count = parseInt(match[3]);
                 const key = `${duration}-${count}`;
-                revenue = rev; // 收
+                
                 base_comm = commTable[key] || 0;
                 base_cost = costTable[key] || 0; 
                 work = WORK_UNIT_TABLE[duration] || 0; 
-                totalWorks += work; 
 
                 services.forEach(svc => { if (rawLine.toLowerCase().includes(svc.name.toLowerCase())) extra_money += svc.price; });
                 
-                total_miss = base_comm + extra_money; // 小姐實拿
-                
-                // 阿姨複雜公式
-                aunt_inc = revenue - base_cost - extra_money;
-                
-                let realName = staff.name;
-                const nameMatch = rawLine.match(/^([^\d\s]+)/);
-                if (nameMatch && !nameMatch[1].includes(':')) realName = nameMatch[1];
-                if (AUNT_EXTRA_NAMES.includes(realName)) aunt_inc += 100;
-
-                aunt_disp = Math.floor(aunt_inc / 100);
-
-                // 結餘 = 收 - 小姐
-                balance = revenue - total_miss;
-
-            } else { 
+                total_miss = base_comm + extra_money; 
+            } else {
                 isManual = true; 
-                revenue = 0; total_miss = 0; aunt_disp = 0; balance = 0; work = 0;
             }
-            results.push({ rawLine, isManual, revenue, total_miss, aunt_disp, balance, work });
+
+            // 2. [關鍵] 檢查手動覆蓋 (Overrides) - 優先權高於公式
+            const o = overrides[index] || {};
+            const isRevenueOverridden = o.revenue !== undefined;
+            const isMissOverridden = o.total_miss !== undefined;
+            const isWorkOverridden = o.work !== undefined;
+            const isAuntOverridden = o.aunt_disp !== undefined; // [新增] 阿姨是否被覆蓋
+
+            if (isRevenueOverridden) revenue = o.revenue;
+            if (isMissOverridden) total_miss = o.total_miss;
+            if (isWorkOverridden) work = o.work;
+
+            // 3. [關鍵] 阿姨公式計算
+            // 先算公式值
+            let aunt_inc = revenue - base_cost - extra_money;
+            let realName = staff.name;
+            const nameMatch = rawLine.match(/^([^\d\s]+)/);
+            if (nameMatch && !nameMatch[1].includes(':')) realName = nameMatch[1];
+            if (AUNT_EXTRA_NAMES.includes(realName)) aunt_inc += 100;
+            let aunt_disp = Math.floor(aunt_inc / 100);
+
+            // 如果有手動覆蓋，就用手動的值，不管公式
+            if (isAuntOverridden) aunt_disp = o.aunt_disp;
+
+            // 4. 計算結餘
+            let balance = revenue - total_miss;
+
+            totalWorks += work;
+            results.push({ 
+                rawLine, isManual, 
+                revenue, total_miss, aunt_disp, balance, work, index,
+                isRevenueOverridden, isMissOverridden, isWorkOverridden, isAuntOverridden // 傳給 UI
+            });
         });
         return { results, totalWorks };
     }
 
     // 處理表格內編輯 (更新 DOM 計算)
-    function onCellEdit(cell) {
-        updateTotalsFromDOM();
-    }
+    function onCellEdit(cell) { updateTotalsFromDOM(); }
 
-    // 從 DOM 重新計算總和
     function updateTotalsFromDOM() {
         let dom_grand_total_revenue = 0; 
         let dom_grand_total_aunt_points = 0; 
@@ -441,7 +522,7 @@
             let card_total_rev = 0;
             let card_total_miss = 0;
             let card_total_bal = 0; 
-            let card_total_work = 0; // 新增工數統計
+            let card_total_work = 0; 
             
             // 遍歷該卡片所有資料行
             card.querySelectorAll('tbody tr:not([style*="background"])').forEach(row => {
@@ -450,7 +531,7 @@
                 const r_rev = getVal('.col-rev');
                 const r_miss = getVal('.col-miss');
                 const r_aunt = getVal('.col-aunt');
-                const r_work = getVal('.col-work'); // 讀取工數
+                const r_work = getVal('.col-work');
                 
                 // 動態更新該行的結餘顯示 (收 - 小姐)
                 const r_bal = r_rev - r_miss;
@@ -475,7 +556,7 @@
                 footerCells[2].innerText = card_total_rev;
                 footerCells[3].innerText = card_total_miss;
                 footerCells[4].innerText = card_total_bal; 
-                footerCells[5].innerText = card_total_work; // 更新工數總計
+                footerCells[5].innerText = card_total_work; 
             }
 
             // 修正後結餘
@@ -487,13 +568,11 @@
             dom_grand_total_revenue += final_bal;
             dom_grand_total_aunt_points += card_total_aunt_pts;
 
-            // 經紀費計算 (現在使用 DOM 統計出來的工數，實現連動)
+            // 經紀費計算
             const agentName = card.dataset.agentName;
             const agentRate = parseInt(card.dataset.agentRate || 300);
-            // const totalWorks = parseInt(card.dataset.totalWorks || 0); // 舊邏輯 (靜態)
-            const staffAgentFee = card_total_work * agentRate; // 新邏輯 (動態)
+            const staffAgentFee = card_total_work * agentRate; 
 
-            // 更新介面上顯示的費用
             const feeDisplay = card.querySelector('.agent-fee-display');
             if(feeDisplay) feeDisplay.innerText = `費用: $${staffAgentFee}`;
 
@@ -504,14 +583,12 @@
         });
 
         const grand_total_aunt_money = dom_grand_total_aunt_points * 100;
-
         let grand_total_agent_fees = 0;
         let agent_summary_html = "";
         for (const [name, fee] of Object.entries(dom_agent_fee_map)) {
             grand_total_agent_fees += fee;
             agent_summary_html += `<div>${name}: $${fee}</div>`;
         }
-
         const net_profit = dom_grand_total_revenue - grand_total_aunt_money - grand_total_agent_fees;
 
         document.getElementById('total_revenue').innerText = dom_grand_total_revenue.toLocaleString();
@@ -540,7 +617,7 @@
             card.className = 'staff-card-settle';
             card.dataset.agentName = agentName;
             card.dataset.agentRate = agentRate;
-            card.dataset.totalWorks = totalWorks; // 初始值，後續由 DOM 更新覆蓋
+            card.dataset.totalWorks = totalWorks;
             
             card.style.background = '#fff'; card.style.borderRadius = '8px'; card.style.border = '1px solid #ccc'; card.style.overflow = 'hidden'; card.style.boxShadow = '0 2px 5px rgba(0,0,0,0.05)';
 
@@ -572,16 +649,28 @@
                     <tbody>
             `;
 
-            // [CodeSage] 修復：將自動計算的欄位設為唯讀，並加上背景色區分
             results.forEach(row => {
                 headerHtml += `
                     <tr style="border-bottom:1px solid #eee;">
                         <td style="padding:5px; color:${row.isManual ? '#e74c3c' : '#333'};">${row.rawLine}</td>
-                        <td class="col-aunt" style="text-align:center; font-weight:bold; color:#2980b9; background:#f9f9f9;">${row.aunt_disp}</td>
-                        <td class="col-rev" style="text-align:center; color:#27ae60; background:#f9f9f9;">${row.revenue}</td>
-                        <td class="col-miss" style="text-align:center; color:#c0392b; background:#f9f9f9;">${row.total_miss}</td>
+                        
+                        <td class="col-aunt editable-cell ${row.isAuntOverridden ? 'manual-text' : ''}" contenteditable="true"
+                            onblur="saveOverride(${staff.id}, ${row.index}, 'aunt_disp', this)"
+                            style="text-align:center; font-weight:bold; color:#2980b9; background:#f9f9f9;">${row.aunt_disp}</td>
+                        
+                        <td class="col-rev editable-cell ${row.isRevenueOverridden ? 'manual-text' : ''}" contenteditable="true"
+                            onblur="saveOverride(${staff.id}, ${row.index}, 'revenue', this)"
+                            style="text-align:center; color:#27ae60; background:#f9f9f9;">${row.revenue}</td>
+                        
+                        <td class="col-miss editable-cell ${row.isMissOverridden ? 'manual-text' : ''}" contenteditable="true"
+                            onblur="saveOverride(${staff.id}, ${row.index}, 'total_miss', this)"
+                            style="text-align:center; color:#c0392b; background:#f9f9f9;">${row.total_miss}</td>
+                        
                         <td class="col-bal" style="text-align:center; color:#555;">${row.balance}</td>
-                        <td class="col-work" style="text-align:center; color:#d35400; font-weight:bold; background:#f9f9f9;">${row.work}</td>
+                        
+                        <td class="col-work editable-cell ${row.isWorkOverridden ? 'manual-text' : ''}" contenteditable="true"
+                            onblur="saveOverride(${staff.id}, ${row.index}, 'work', this)"
+                            style="text-align:center; color:#d35400; font-weight:bold; background:#f9f9f9;">${row.work}</td>
                     </tr>
                 `;
             });
