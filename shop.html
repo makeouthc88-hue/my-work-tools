@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>全能門店管理 (完全自由編輯版)</title>
+    <title>全能門店管理 (排版優化版)</title>
     
+    <!-- Firebase v8.10.1 (為了兼容現有程式碼) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
@@ -35,7 +36,7 @@
         .view-container { flex: 1; position: relative; display: none; flex-direction: column; overflow: hidden; height: 100%; }
         .view-container.active { display: flex; }
         
-        /* 排班視圖樣式 */
+        /* 排班視圖樣式 - (未修改的樣式保持原樣) */
         .schedule-top-bar { height: auto; min-height: 50px; background: var(--primary-dark); display: flex; flex-wrap: wrap; align-items: center; padding: 5px 10px; gap: 10px; border-bottom: 1px solid #34495e; flex-shrink: 0; color: white; }
         .info-group { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.3); padding: 5px 10px; border-radius: 8px; flex: 1; }
         .date-input { background: transparent; border: none; color: #f1c40f; font-size: 18px; font-weight: bold; width: 70px; text-align: center; }
@@ -87,14 +88,72 @@
         .config-panel { background: white; padding: 10px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
         .config-panel h3 { margin: 0 0 8px 0; color: #007bff; font-size: 15px; border-bottom: 1px solid #f0f0f0; padding-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
         
-        .middle-section { margin-bottom: 15px; overflow-x: auto; padding-bottom: 5px; }
-        .summary-area { display: flex; gap: 10px; min-width: 100%; }
-        .card { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); padding: 10px; min-width: 100px; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        .card h4 { margin: 0 0 5px 0; font-size: 11px; color: #888; white-space: nowrap; }
-        .card p { margin: 0; font-size: 20px; font-weight: 800; color: #333; }
+        /* ------------------------------------------- */
+        /* --- CodeSage 優化: 日結總結區塊樣式 (RWD) --- */
+        /* ------------------------------------------- */
+        .middle-section { margin-bottom: 15px; }
+        .summary-area { 
+            /* RWD 網格布局: 預設手機每行 2 個 */
+            display: grid; 
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px; 
+        }
+        @media (min-width: 768px) {
+            /* 平板及桌面每行 5 個 */
+            .summary-area {
+                grid-template-columns: repeat(5, 1fr);
+            }
+        }
+        
+        .summary-card { 
+            background: white; 
+            padding: 12px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1); 
+            min-height: 80px; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: space-between;
+        }
+        
+        .summary-card h4 { 
+            margin: 0 0 5px 0; 
+            font-size: 10px; 
+            color: #95a5a6; 
+            text-transform: uppercase; 
+            white-space: nowrap;
+            font-weight: 600;
+        }
+        .summary-value {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 900;
+            color: var(--primary-dark);
+            line-height: 1.2;
+        }
+
+        /* 本日盈餘 - 突出樣式 */
+        #total_net_profit_card {
+            background: #e1f5fe; /* 淺藍色背景 */
+            border: 2px solid #007bff;
+        }
+        #total_net_profit_card .summary-value {
+            font-size: 28px !important;
+            color: #007bff !important;
+        }
+        /* 經紀費總計 - 內容為多行文本 */
+        #agent_fee_summary_card #agent_fee_summary {
+            font-size: 12px;
+            color: #c0392b;
+            font-weight: bold;
+            white-space: pre-wrap;
+            line-height: 1.4;
+        }
+
         .text-green { color: #28a745 !important; }
         .text-red { color: #dc3545 !important; }
         .text-blue { color: #007bff !important; }
+        /* ------------------------------------------- */
         
         /* 可編輯欄位樣式 */
         td[contenteditable="true"] { background: #fffae6; cursor: text; border: 1px dashed #ccc; min-width: 40px; }
@@ -169,7 +228,8 @@
             </div>
             <div class="time-settings">
                 <span>開</span><input type="number" id="openHour" value="12" onchange="renderScheduleAll()">
-                <span>閉</span><input type="number" id="closeHour" value="29" onchange="renderScheduleAll()">
+                <!-- 閉店時間預設 26 點 -->
+                <span>閉</span><input type="number" id="closeHour" value="26" onchange="renderScheduleAll()">
             </div>
         </div>
     </div>
@@ -196,12 +256,34 @@
 
 <div id="view-settle" class="view-container">
     <div class="settle-container">
+        <!-- 🚀 CodeSage 優化: 總結區域使用新結構和 RWD 樣式 -->
         <div class="middle-section">
             <div class="summary-area">
-                <div class="card"><h4>總營收 (共收)</h4><p id="total_revenue" class="text-green">0</p></div>
-                <div class="card"><h4>總阿姨帳</h4><p id="total_aunt">0</p></div>
-                <div class="card" style="min-width:140px;"><h4>經紀費總計</h4><div id="agent_fee_summary" style="font-size:12px; color:#c0392b; font-weight:bold;"></div></div>
-                <div class="card"><h4>本日盈餘</h4><p id="total_net_profit" class="text-blue" style="font-size:24px;">0</p></div>
+                <!-- 總營收 -->
+                <div class="summary-card">
+                    <h4>總營收 (共收)</h4>
+                    <p id="total_revenue" class="summary-value text-green">0</p>
+                </div>
+                <!-- 總阿姨帳 -->
+                <div class="summary-card">
+                    <h4>總阿姨帳</h4>
+                    <p id="total_aunt" class="summary-value">0</p>
+                </div>
+                <!-- 經紀費總計 -->
+                <div class="summary-card" id="agent_fee_summary_card">
+                    <h4>經紀費總計</h4>
+                    <div id="agent_fee_summary" class="summary-value">無</div>
+                </div>
+                <!-- 本日盈餘 (突出顯示) -->
+                <div class="summary-card" id="total_net_profit_card">
+                    <h4>本日盈餘</h4>
+                    <p id="total_net_profit" class="summary-value text-blue">0</p>
+                </div>
+                <!-- 總工數 -->
+                <div class="summary-card">
+                    <h4>總工數</h4>
+                    <p id="total_works_summary" class="summary-value text-blue">0</p>
+                </div>
             </div>
         </div>
 
@@ -214,10 +296,16 @@
                     <div class="setting-item"><label>60分/2</label><input type="number" id="base_60_2" value="1900" oninput="renderSettlementTable()"></div>
                     <div class="setting-item"><label>120分/3</label><input type="number" id="base_120_3" value="2800" oninput="renderSettlementTable()"></div>
                     
+                    <!-- 🚀 新增 240分/3 的底薪參數 -->
+                    <div class="setting-item"><label>240分/3</label><input type="number" id="base_240_3" value="4200" oninput="renderSettlementTable()"></div>
+                    
                     <input type="hidden" id="cost_40_1" value="2300">
                     <input type="hidden" id="cost_60_1" value="2700">
                     <input type="hidden" id="cost_60_2" value="3300">
                     <input type="hidden" id="cost_120_3" value="4800">
+                    
+                    <!-- 🚀 新增 240分/3 的隱藏成本參數 -->
+                    <input type="hidden" id="cost_240_3" value="6800">
                 </div>
             </div>
             <div class="config-panel">
@@ -275,7 +363,8 @@
     const PX_PER_MIN = 2;
     let staffData = [];
     let services = [ {name: "nocon", price: 1000}, {name: "口爆", price: 500} ];
-    const WORK_UNIT_TABLE = {40: 1, 60: 1, 120: 2};
+    // 240分鐘定義為 3 工
+    const WORK_UNIT_TABLE = {40: 1, 60: 1, 120: 2, 240: 3};
     const AUNT_EXTRA_NAMES = ["顏同", "阿鳴", "曼達", "有菜", "姚貴"]; 
 
     let currentEditingStaffId = null; 
@@ -446,7 +535,7 @@
     }
     function renderTracksOnly() { 
         const openH = parseInt(document.getElementById('openHour').value) || 12; 
-        const closeH = parseInt(document.getElementById('closeHour').value) || 29; 
+        const closeH = parseInt(document.getElementById('closeHour').value) || 26; // 使用預設 26
         const startOfDay = openH * 60; 
         const totalWidth = (closeH * 60 - startOfDay) * PX_PER_MIN; 
         if (totalWidth <= 0) return; 
@@ -499,8 +588,10 @@
         lines.forEach(line => { 
             const trimmedLine = line.trim(); 
             if (!trimmedLine) return; 
+            // 忽略日期行
             if (/^[\d./-]+\s*(?:\([A-Za-z]+\))?$/.test(trimmedLine) && trimmedLine.length < 12) return; 
             
+            // 尋找時間戳記和細節
             const match = trimmedLine.match(/([\d.:]+)\s*(\d+.*)/) || trimmedLine.match(/(\D+)\s*([\d.:]+)\s*(\d+.*)/); 
             
             if (match) { 
@@ -508,9 +599,11 @@
                 if (match.length === 3) { 
                     timeStr = match[1]; detailStr = match[2]; 
                 } else { 
+                    // 匹配: (名字) (時間) (細節)
                     timeStr = match[2]; detailStr = match[3]; 
                 } 
                 
+                // 從細節中解析時長
                 let duration = 60; 
                 const numMatch = detailStr.match(/^(\d+)/); 
                 if (numMatch) duration = parseInt(numMatch[1]); 
@@ -549,7 +642,7 @@
         
         let currentCursor = startOfDay; 
         tasks.forEach(task => { 
-            // 渲染空檔 (Free)
+            // 渲染中間空檔 (Free)
             if (task.start > currentCursor) { 
                 let gap = task.start - currentCursor; 
                 if (gap >= 10) { 
@@ -567,6 +660,18 @@
             
             if (task.end > currentCursor) currentCursor = task.end; 
         }); 
+
+        // 渲染最後一個空檔，從最後一班結束到閉店 (endOfDay)
+        if (currentCursor < endOfDay) {
+            let gap = endOfDay - currentCursor;
+            if (gap >= 10) { 
+                let startStr = formatTime(currentCursor); 
+                let endStr = formatTime(endOfDay); 
+                let durationStr = formatDuration(gap); 
+                let label = `<b>${durationStr}</b><div style="font-size:10px; margin-top:1px;">${startStr}-${endStr}</div>`; 
+                createBlock(container, currentCursor, endOfDay, startOfDay, 'free', label); 
+            }
+        }
     }
     function parseTime(timeStr) { 
         if (!timeStr) return null; 
@@ -678,6 +783,7 @@
         const timeRegex = /^\d{2}:\d{2}$/; 
         
         if ((newInTime && !timeRegex.test(newInTime)) || (newOutTime && !timeRegex.test(newOutTime))) { 
+            // 由於此處沒有客製化彈窗，暫時保留 alert，但生產環境應替換
             alert("格式錯誤 HH:MM"); 
             return; 
         } 
@@ -822,24 +928,28 @@
             if (!rawLine) return;
             
             // 1. 先計算基礎公式參數 (預設值)
-            const pattern = /(\d+)\/(\d+)-(\d+)/;
+            // 🚀 CodeSage 魯棒修復 Regex: 
+            // 匹配格式: (時長)(可選的括號內容)[/-](金額)[/-](工數參數)
+            // 確保可以匹配 240(3+1)/9600/3 和 120/4800-3 等所有格式
+            const pattern = /(\d+)(?:\([\d\s+-]*\))?[/-](\d+)[/-](\d+)/;
             const match = rawLine.match(pattern);
             
             let base_cost = 0;
             let base_comm = 0;
             let extra_money = 0;
             let revenue = 0; 
-            let work = 0;    
+            let work = 0;  
 
             if (match) {
-                const duration = parseInt(match[1]);
-                revenue = parseInt(match[2]); 
-                const count = parseInt(match[3]);
-                const key = `${duration}-${count}`;
+                const duration = parseInt(match[1]); // Group 1: 時長 (e.g., 240)
+                revenue = parseInt(match[2]);      // Group 2: 金額 (e.g., 9600)
+                const count = parseInt(match[3]);    // Group 3: 人數/工數參數 (e.g., 3)
+                
+                const key = `${duration}-${count}`;   // e.g., "240-3"
                 
                 base_comm = commTable[key] || 0;
                 base_cost = costTable[key] || 0; 
-                work = WORK_UNIT_TABLE[duration] || 0; 
+                work = WORK_UNIT_TABLE[duration] || 0; // 240分鐘會取到 3 工
 
                 // 計算加值服務費用
                 services.forEach(svc => { 
@@ -847,6 +957,9 @@
                         extra_money += svc.price; 
                     }
                 });
+            } else {
+                // 如果無法匹配，表示這不是一個可計算的服務項目，直接跳過
+                return;
             }
             
             let total_miss = base_comm + extra_money; 
@@ -901,6 +1014,8 @@
         let dom_grand_total_revenue = 0; 
         let dom_grand_total_aunt_points = 0; 
         let dom_agent_fee_map = {};
+        // 🚀 新增一個變數來累計所有員工的總工數
+        let dom_grand_total_works = 0;
 
         document.querySelectorAll('.staff-card-settle').forEach(card => {
             let card_total_aunt_pts = 0; 
@@ -941,7 +1056,7 @@
                 footerCells[2].innerText = card_total_rev;
                 footerCells[3].innerText = card_total_miss;
                 footerCells[4].innerText = card_total_bal; 
-                footerCells[5].innerText = card_total_work; 
+                footerCells[5].innerText = card_total_work; // 員工總工數
             }
 
             // 修正後結餘
@@ -952,12 +1067,13 @@
             // 累加到全局
             dom_grand_total_revenue += final_bal;
             dom_grand_total_aunt_points += card_total_aunt_pts;
+            dom_grand_total_works += card_total_work; // 🚀 累計總工數
 
             // 經紀費計算
             const agentName = card.dataset.agentName;
             const agentRate = parseInt(card.dataset.agentRate || 300);
             // 使用 footer 總計的工數來計算經紀費
-            const totalWorksFromFooter = parseInt(footerCells[5].innerText.replace(/[^\d-]/g,'') || 0);
+            const totalWorksFromFooter = card_total_work; 
             const staffAgentFee = totalWorksFromFooter * agentRate; 
 
             const feeDisplay = card.querySelector('.agent-fee-display');
@@ -974,19 +1090,33 @@
         let agent_summary_html = "";
         for (const [name, fee] of Object.entries(dom_agent_fee_map)) {
             grand_total_agent_fees += fee;
-            agent_summary_html += `<div>${name}: $${fee}</div>`;
+            agent_summary_html += `<div>${name}: $${fee.toLocaleString()}</div>`; // 加上千分位
         }
         const net_profit = dom_grand_total_revenue - grand_total_aunt_money - grand_total_agent_fees;
 
+        // 🚀 更新頂部總計 (加上千分位格式化)
         document.getElementById('total_revenue').innerText = dom_grand_total_revenue.toLocaleString();
         document.getElementById('total_aunt').innerText = grand_total_aunt_money.toLocaleString(); 
         document.getElementById('agent_fee_summary').innerHTML = agent_summary_html || "無";
         document.getElementById('total_net_profit').innerText = net_profit.toLocaleString();
+        document.getElementById('total_works_summary').innerText = dom_grand_total_works.toLocaleString();
     }
 
     function renderSettlementTable() {
-        const commTable = { "40-1": parseInt(document.getElementById('base_40_1').value)||0, "60-1": parseInt(document.getElementById('base_60_1').value)||0, "60-2": parseInt(document.getElementById('base_60_2').value)||0, "120-3": parseInt(document.getElementById('base_120_3').value)||0 };
-        const costTable = { "40-1": parseInt(document.getElementById('cost_40_1').value)||0, "60-1": parseInt(document.getElementById('cost_60_1').value)||0, "60-2": parseInt(document.getElementById('cost_60_2').value)||0, "120-3": parseInt(document.getElementById('cost_120_3').value)||0 };
+        const commTable = { 
+            "40-1": parseInt(document.getElementById('base_40_1').value)||0, 
+            "60-1": parseInt(document.getElementById('base_60_1').value)||0, 
+            "60-2": parseInt(document.getElementById('base_60_2').value)||0, 
+            "120-3": parseInt(document.getElementById('base_120_3').value)||0,
+            "240-3": parseInt(document.getElementById('base_240_3').value)||0
+        };
+        const costTable = { 
+            "40-1": parseInt(document.getElementById('cost_40_1').value)||0, 
+            "60-1": parseInt(document.getElementById('cost_60_1').value)||0, 
+            "60-2": parseInt(document.getElementById('cost_60_2').value)||0, 
+            "120-3": parseInt(document.getElementById('cost_120_3').value)||0,
+            "240-3": parseInt(document.getElementById('cost_240_3').value)||0
+        };
         
         const container = document.getElementById('table_body');
         container.innerHTML = ''; 
@@ -1020,7 +1150,7 @@
                             style="width:50px; text-align:center; border:1px solid #aaa; border-radius:4px; font-weight:bold; color:#c0392b;">
                         <div style="display:flex; flex-direction:column; align-items:flex-end; font-size:10px; color:#2c3e50; line-height:1.1;">
                             <div>費率: <input type="number" value="${agentRate}" onchange="updateStaffSettlement(${staff.id}, 'agentRate', this.value)" style="width:40px; border:none; background:transparent; border-bottom:1px solid #aaa; text-align:right;"></div>
-                            <div class="agent-fee-display" style="font-weight:bold; color:#d35400;">費用: $${staffAgentFee}</div>
+                            <div class="agent-fee-display" style="font-weight:bold; color:#d35400;">費用: $${staffAgentFee.toLocaleString()}</div>
                         </div>
                     </div>
                 </div>
@@ -1097,7 +1227,8 @@
             container.appendChild(card);
         });
 
-        updateTotalsFromDOM();
+        // 確保在所有 DOM 元素都渲染後，呼叫一次總計更新
+        updateTotalsFromDOM(); 
     }
 
     initSchedule(); 
